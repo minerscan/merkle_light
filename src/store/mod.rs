@@ -17,6 +17,8 @@ use typenum::marker_traits::Unsigned;
 use crate::hash::Algorithm;
 use crate::merkle::{get_merkle_tree_row_count, log2_pow2, next_pow2, Element};
 
+use qiniu::service::storage::download::RangeReader;
+
 /// Tree size (number of nodes) used as threshold to decide which build algorithm
 /// to use. Small trees (below this value) use the old build algorithm, optimized
 /// for speed rather than memory, allocating as much as needed to allow multiple
@@ -38,6 +40,36 @@ pub use level_cache::LevelCacheStore;
 pub use mmap::MmapStore;
 pub use vec::VecStore;
 
+
+#[derive(Debug)]
+pub struct MixReader{
+    file: Option<std::fs::File>,
+    qiniu: Option<RangeReader>
+}
+
+#[allow(unsafe_code)]
+impl MixReader {
+    fn read_internal(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<usize>{
+        self.file.as_ref().unwrap().read_at(pos, buf)
+    }
+}
+
+impl Read for MixReader {
+    //dummy
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        println!("range reader read dummy");
+        return self.file.as_ref().unwrap().read(buf);
+    }
+}
+
+#[allow(unsafe_code)]
+impl ReadAt for MixReader {
+    fn read_at(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+        println!("range reader read at dummy");
+        return self.file.as_ref().unwrap().read_at(pos, buf)
+    }
+}
+
 #[derive(Clone)]
 pub struct ExternalReader<R: Read + Send + Sync> {
     pub offset: usize,
@@ -51,25 +83,54 @@ impl<R: Read + Send + Sync> ExternalReader<R> {
     }
 }
 
-impl ExternalReader<std::fs::File> {
-    pub fn new_from_config(replica_config: &ReplicaConfig, index: usize) -> Result<Self> {
-        let reader = OpenOptions::new().read(true).open(&replica_config.path)?;
+#[allow(unsafe_code)]
+impl ExternalReader<MixReader> {
+    pub fn new_from_mix_config(replica_config: &ReplicaConfig, index: usize) -> Result<Self> {
+        let mut f :Option<std::fs::File> = None;
+        if replica_config.path.exists() {
+            let file = OpenOptions::new().read(true).open(&replica_config.path);
+            f = Some(file.unwrap());
+        }
+
+        let reader = MixReader{
+            file: f,
+            qiniu: None,
+        };
 
         Ok(ExternalReader {
             offset: replica_config.offsets[index],
             source: reader,
-            read_fn: |start, end, buf: &mut [u8], reader: &std::fs::File| {
-                reader.read_exact_at(start as u64, &mut buf[0..end - start])?;
-
+            read_fn: |start, end, buf: &mut [u8], reader: &MixReader| {
+                reader.read_at(start as u64, &mut buf[0..end - start])?;
                 Ok(end - start)
             },
         })
     }
 
-    pub fn new_from_path(path: &PathBuf) -> Result<Self> {
-        Self::new_from_config(&ReplicaConfig::from(path), 0)
+    pub fn new_from_mix_path(path: &PathBuf) -> Result<Self> {
+        Self::new_from_mix_config(&ReplicaConfig::from(path), 0)
     }
 }
+
+// impl ExternalReader<std::fs::File> {
+//     pub fn new_from_config(replica_config: &ReplicaConfig, index: usize) -> Result<Self> {
+//         let reader = OpenOptions::new().read(true).open(&replica_config.path)?;
+//
+//         Ok(ExternalReader {
+//             offset: replica_config.offsets[index],
+//             source: reader,
+//             read_fn: |start, end, buf: &mut [u8], reader: &std::fs::File| {
+//                 reader.read_exact_at(start as u64, &mut buf[0..end - start])?;
+//
+//                 Ok(end - start)
+//             },
+//         })
+//     }
+//
+//     pub fn new_from_path(path: &PathBuf) -> Result<Self> {
+//         Self::new_from_config(&ReplicaConfig::from(path), 0)
+//     }
+// }
 
 impl<R: Read + Send + Sync> fmt::Debug for ExternalReader<R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -238,9 +299,25 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
     fn delete(config: StoreConfig) -> Result<()>;
 
     fn read_at(&self, index: usize) -> Result<E>;
+    fn read_at_v2(&self, index: usize, buf:&[u8], pos:&Vec<(u64, u64)>) -> Result<E> {
+        self.read_at(index)
+    }
+    fn read_at_v2_range(&self, index: usize, pos: &mut (u64,u64)) -> Result<()> {
+        Ok(())
+    }
+
     fn read_range(&self, r: ops::Range<usize>) -> Result<Vec<E>>;
     fn read_into(&self, pos: usize, buf: &mut [u8]) -> Result<()>;
+
     fn read_range_into(&self, start: usize, end: usize, buf: &mut [u8]) -> Result<()>;
+    fn read_range_into_v2(&self, start: usize, end: usize, buf: &mut [u8],
+                          data:&[u8], pos:&Vec<(u64, u64)>) -> Result<()>{
+        self.read_range_into(start, end, buf)
+    }
+    fn read_range_into_v2_range(&self, start: usize, end: usize,
+                                pos:&mut (u64, u64)) -> Result<()> {
+        Ok(())
+    }
 
     fn len(&self) -> usize;
     fn loaded_from_disk(&self) -> bool;

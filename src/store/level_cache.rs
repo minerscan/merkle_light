@@ -315,6 +315,36 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         Ok(())
     }
 
+    fn read_at_v2_range(&self, index: usize, pos: &mut (u64,u64)) -> Result<()> {
+        let start = index * self.elem_len;
+        let end = start + self.elem_len;
+
+        let len = self.len * self.elem_len;
+        ensure!(start < len, "start out of range {} >= {}", start, len);
+        ensure!(end <= len, "end out of range {} > {}", end, len);
+        ensure!(
+            start <= self.data_width * self.elem_len || start >= self.cache_index_start,
+            "out of bounds"
+        );
+
+        self.store_read_range_v2_range(start, end, pos)
+    }
+
+    fn read_at_v2(&self, index: usize, buf:&[u8], pos:&Vec<(u64, u64)>) -> Result<E> {
+        let start = index * self.elem_len;
+        let end = start + self.elem_len;
+
+        let len = self.len * self.elem_len;
+        ensure!(start < len, "start out of range {} >= {}", start, len);
+        ensure!(end <= len, "end out of range {} > {}", end, len);
+        ensure!(
+            start <= self.data_width * self.elem_len || start >= self.cache_index_start,
+            "out of bounds"
+        );
+
+        Ok(E::from_slice(&self.store_read_range_v2(start, end, buf, pos)?))
+    }
+
     fn read_at(&self, index: usize) -> Result<E> {
         let start = index * self.elem_len;
         let end = start + self.elem_len;
@@ -358,6 +388,38 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         );
 
         self.store_read_into(start, end, buf)
+    }
+
+    fn read_range_into_v2(&self, start: usize, end: usize, buf: &mut [u8],
+                          data:&[u8], pos:&Vec<(u64, u64)>) -> Result<()> {
+        let start = start * self.elem_len;
+        let end = end * self.elem_len;
+
+        let len = self.len * self.elem_len;
+        ensure!(start < len, "start out of range {} >= {}", start, len);
+        ensure!(end <= len, "end out of range {} > {}", end, len);
+        ensure!(
+            start <= self.data_width * self.elem_len || start >= self.cache_index_start,
+            "out of bounds"
+        );
+
+        self.store_read_into_v2(start, end, buf, data, pos)
+    }
+
+    fn read_range_into_v2_range(&self, start: usize, end: usize,
+                                 pos:&mut (u64, u64)) -> Result<()> {
+        let start = start * self.elem_len;
+        let end = end * self.elem_len;
+
+        let len = self.len * self.elem_len;
+        ensure!(start < len, "start out of range {} >= {}", start, len);
+        ensure!(end <= len, "end out of range {} > {}", end, len);
+        ensure!(
+            start <= self.data_width * self.elem_len || start >= self.cache_index_start,
+            "out of bounds"
+        );
+
+        self.store_read_into_v2_range(start, end, pos)
     }
 
     fn read_range(&self, r: ops::Range<usize>) -> Result<Vec<E>> {
@@ -678,6 +740,95 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         Ok(store_size == cache_size)
     }
 
+    pub fn store_read_range_v2_range(&self, start: usize, end: usize,
+                                     pos: &mut (u64,u64)) -> Result<()> {
+        let read_len = end - start;
+        let mut read_data = vec![0; read_len];
+        let mut adjusted_start = start;
+
+        ensure!(
+            start <= self.data_width * self.elem_len || start >= self.cache_index_start,
+            "out of bounds"
+        );
+
+        // If an external reader was specified for the base layer, use it.
+        if start < self.data_width * self.elem_len && self.reader.is_some() {
+            let offset = self.reader.as_ref().unwrap().offset;
+            let st_r = start + offset;
+            let read_len = end - start;
+            pos.0 = st_r as u64;
+            pos.1 = read_len as u64;
+        }
+        return Ok(());
+    }
+
+    pub fn store_read_range_v2(&self, start: usize, end: usize, buf:&[u8], pos:&Vec<(u64, u64)>) -> Result<Vec<u8>> {
+        let read_len = end - start;
+        let mut read_data = vec![0; read_len];
+        let mut adjusted_start = start;
+
+        ensure!(
+            start <= self.data_width * self.elem_len || start >= self.cache_index_start,
+            "out of bounds"
+        );
+
+        // If an external reader was specified for the base layer, use it.
+        if start < self.data_width * self.elem_len && self.reader.is_some() {
+            if pos.len() > 0 {
+                let offset = self.reader.as_ref().unwrap().offset;
+                let st_r = start + offset;
+                let read_len = end - start;
+                println!("store_read_range_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
+                for (i, j) in pos {
+                    println!("store_read_range_v2 i is {}, j {}", i, j);
+                    if *i as usize == st_r {
+                        let a = *j as usize;
+                        let b = *j as usize + read_len;
+                        read_data.copy_from_slice(&buf[a..b]);
+                        return Ok(read_data);
+                    }
+                }
+                println!("store_read_range_v2 found no data");
+            }else {
+                self.reader
+                    .as_ref()
+                    .unwrap()
+                    .read(start, end, &mut read_data)
+                    .with_context(|| {
+                        format!(
+                            "failed to read {} bytes from file at offset {}",
+                            end - start,
+                            start
+                        )
+                    })?;
+
+                return Ok(read_data);
+            }
+        }
+
+        // Adjust read index if in the cached ranged to be shifted
+        // over since the data stored is compacted.
+        if start >= self.cache_index_start {
+            let v1 = self.reader.is_none();
+            adjusted_start = if v1 {
+                start - self.cache_index_start + (self.data_width * self.elem_len)
+            } else {
+                start - self.cache_index_start
+            };
+        }
+
+        self.file
+            .read_exact_at(adjusted_start as u64, &mut read_data)
+            .with_context(|| {
+                format!(
+                    "failed to read {} bytes from file at offset {}",
+                    read_len, start
+                )
+            })?;
+
+        Ok(read_data)
+    }
+
     pub fn store_read_range(&self, start: usize, end: usize) -> Result<Vec<u8>> {
         let read_len = end - start;
         let mut read_data = vec![0; read_len];
@@ -782,6 +933,89 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         );
 
         Ok(E::from_slice(&self.store_read_range_internal(start, end)?))
+    }
+
+    pub fn store_read_into_v2(&self, start: usize, end: usize, buf: &mut [u8],
+                              data:&[u8], pos:&Vec<(u64, u64)>) -> Result<()> {
+        ensure!(
+            start <= self.data_width * self.elem_len || start >= self.cache_index_start,
+            "Invalid read start"
+        );
+
+        // If an external reader was specified for the base layer, use it.
+        if start < self.data_width * self.elem_len && self.reader.is_some() {
+            if pos.len() > 0 {
+                let offset = self.reader.as_ref().unwrap().offset;
+                let st_r = start + offset;
+                let read_len = end - start;
+                println!("store_read_into_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
+                for (i, j) in pos {
+                    println!("store_read_into_v2 i is {}, j {}", i, j);
+                    if *i as usize == st_r {
+                        let a = *j as usize;
+                        let b = *j as usize + read_len;
+                        buf.copy_from_slice(&data[a..b]);
+                        return Ok(())
+                    }
+                }
+                println!("store_read_into_v2 not found data");
+            }else {
+                self.reader
+                    .as_ref()
+                    .unwrap()
+                    .read(start, end, buf)
+                    .with_context(|| {
+                        format!(
+                            "failed to read {} bytes from file at offset {}",
+                            end - start,
+                            start
+                        )
+                    })?;
+            }
+        } else {
+            // Adjust read index if in the cached ranged to be shifted
+            // over since the data stored is compacted.
+            let adjusted_start = if start >= self.cache_index_start {
+                if self.reader.is_none() {
+                    // if v1
+                    start - self.cache_index_start + (self.data_width * self.elem_len)
+                } else {
+                    start - self.cache_index_start
+                }
+            } else {
+                start
+            };
+
+            self.file
+                .read_exact_at(adjusted_start as u64, buf)
+                .with_context(|| {
+                    format!(
+                        "failed to read {} bytes from file at offset {}",
+                        end - start,
+                        start
+                    )
+                })?;
+        }
+
+        Ok(())
+    }
+
+    pub fn store_read_into_v2_range(&self, start: usize, end: usize,
+                                    pos: &mut (u64,u64)) -> Result<()> {
+        ensure!(
+            start <= self.data_width * self.elem_len || start >= self.cache_index_start,
+            "Invalid read start"
+        );
+
+        // If an external reader was specified for the base layer, use it.
+        if start < self.data_width * self.elem_len && self.reader.is_some() {
+            let offset = self.reader.as_ref().unwrap().offset;
+            let st_r = start + offset;
+            let read_len = end - start;
+            pos.0 = st_r as u64;
+            pos.1 = read_len as u64;
+        }
+        Ok(())
     }
 
     pub fn store_read_into(&self, start: usize, end: usize, buf: &mut [u8]) -> Result<()> {
