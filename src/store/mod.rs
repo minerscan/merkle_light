@@ -44,12 +44,13 @@ pub use vec::VecStore;
 #[derive(Debug)]
 pub struct MixReader{
     file: Option<std::fs::File>,
-    qiniu: Option<RangeReader>
+    qiniu: Option<RangeReader>,
 }
 
 #[allow(unsafe_code)]
 impl MixReader {
     fn read_internal(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<usize>{
+        println!("range read_internal dummy");
         self.file.as_ref().unwrap().read_at(pos, buf)
     }
 }
@@ -65,7 +66,7 @@ impl Read for MixReader {
 #[allow(unsafe_code)]
 impl ReadAt for MixReader {
     fn read_at(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<usize> {
-        println!("range reader read at dummy");
+        println!("range reader read atat dummy");
         return self.file.as_ref().unwrap().read_at(pos, buf)
     }
 }
@@ -74,6 +75,7 @@ impl ReadAt for MixReader {
 pub struct ExternalReader<R: Read + Send + Sync> {
     pub offset: usize,
     pub source: R,
+    pub path: String,
     pub read_fn: fn(start: usize, end: usize, buf: &mut [u8], source: &R) -> Result<usize>,
 }
 
@@ -100,8 +102,9 @@ impl ExternalReader<MixReader> {
         Ok(ExternalReader {
             offset: replica_config.offsets[index],
             source: reader,
+            path:(replica_config.path).to_str().unwrap().to_string(),
             read_fn: |start, end, buf: &mut [u8], reader: &MixReader| {
-                reader.read_at(start as u64, &mut buf[0..end - start])?;
+                reader.read_internal(start as u64, &mut buf[0..end - start])?;
                 Ok(end - start)
             },
         })
@@ -298,6 +301,9 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
     // where this is arguably not important/needed).
     fn delete(config: StoreConfig) -> Result<()>;
 
+    fn get_path_v2(&self) -> Option<String> {
+        None
+    }
     fn read_at(&self, index: usize) -> Result<E>;
     fn read_at_v2(&self, index: usize, buf:&[u8], pos:&Vec<(u64, u64)>) -> Result<E> {
         self.read_at(index)
@@ -340,7 +346,7 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
         row_count: usize,
     ) -> Result<E> {
         ensure!(leafs % 2 == 0, "Leafs must be a power of two");
-
+        println!("build_small_tree");
         let mut level: usize = 0;
         let mut width = leafs;
         let mut level_node_index = 0;
@@ -389,6 +395,7 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
         read_start: usize,
         write_start: usize,
     ) -> Result<()> {
+        println!("mod process_layer");
         let branches = U::to_usize();
         let data_lock = Arc::new(RwLock::new(self));
 

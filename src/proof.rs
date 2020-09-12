@@ -86,6 +86,7 @@ impl<T: Eq + Clone + AsRef<[u8]>, BaseTreeArity: Unsigned> Proof<T, BaseTreeArit
 
     /// Validates sub-tree proofs with the specified arity.
     fn validate_sub_tree_proof<A: Algorithm<T>>(&self, arity: usize) -> Result<bool> {
+        println!("validate_sub_tree_proof");
         // Ensure that the sub_tree validates to the root of that
         // sub_tree.
         let valid = self.sub_tree_proof.as_ref().unwrap().validate::<A>()?;
@@ -126,6 +127,7 @@ impl<T: Eq + Clone + AsRef<[u8]>, BaseTreeArity: Unsigned> Proof<T, BaseTreeArit
 
     /// Verifies MT inclusion proof
     pub fn validate<A: Algorithm<T>>(&self) -> Result<bool> {
+        println!("validate");
         if self.top_layer_nodes > 0 {
             // Special Top layer handling here.
             ensure!(
