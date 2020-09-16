@@ -24,6 +24,8 @@ use crate::store::{ExternalReader, Store, StoreConfig, BUILD_CHUNK_NODES};
 
 use qiniu::service::storage::download::{RangeReader, qiniu_is_enable, reader_from_env};
 
+use log::{debug, warn};
+
 struct MixFile {
     file: File,
 }
@@ -74,7 +76,7 @@ impl MixFile {
         }
         let reader = r.unwrap();
         let ret = reader.download(p_str);
-        println!("download len is {}", ret);
+        debug!("last tree download len is {}", ret);
         let f = File::open(path)?;
         return Ok(MixFile{ file: f})
     }
@@ -191,7 +193,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
 
         let file = MixFile::open(data_path)?;
         let store_size = file.len();
-        println!("new_from_disk_with_reader > {} {} {}", store_range, store_size, E::byte_len());
+        debug!("new_from_disk_with_reader > {} {} {}", store_range, store_size, E::byte_len());
         // The LevelCacheStore base data layer must already be a
         // massaged next pow2 (guaranteed if created with
         // DiskStore::compact, which is the only supported method at
@@ -223,8 +225,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             store_size,
             cache_size,
         );
-        println!("226 new_from_disk_with_reader {} {} {}, {}",
-                 store_range, store_size, E::byte_len(), store_range / E::byte_len());
+
         Ok(LevelCacheStore {
             len: store_range / E::byte_len(),
             elem_len: E::byte_len(),
@@ -274,7 +275,6 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         let cache_index_start = store_size - cache_size;
 
         file.set_len(store_size as u64)?;
-        println!("276 0");
         Ok(LevelCacheStore {
             len: 0,
             elem_len: E::byte_len(),
@@ -292,7 +292,6 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         let store_size = E::byte_len() * size;
         let file = MixFile{file:tempfile()?};
         file.set_len(store_size as u64)?;
-        println!("294 0");
         Ok(LevelCacheStore {
             len: 0,
             elem_len: E::byte_len(),
@@ -326,7 +325,6 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         // already correct).
         if !store.loaded_from_disk {
             store.store_copy_from_slice(0, data)?;
-            println!("329 data.len() / store.elem_len {}", data.len() / store.elem_len);
             store.len = data.len() / store.elem_len;
         }
 
@@ -342,7 +340,6 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
 
         let mut store = Self::new(size)?;
         store.store_copy_from_slice(0, data)?;
-        println!("345 data.len() / store.elem_len {}", data.len() / store.elem_len);
         store.len = data.len() / store.elem_len;
 
         Ok(store)
@@ -388,7 +385,7 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
             "Inconsistent store size detected"
         );
          */
-        println!("388 store_range / E::byte_len() {}", store_range / E::byte_len());
+
         Ok(LevelCacheStore {
             len: store_range / E::byte_len(),
             elem_len: E::byte_len(),
@@ -404,7 +401,6 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
 
     fn write_at(&mut self, el: E, index: usize) -> Result<()> {
         self.store_copy_from_slice(index * self.elem_len, el.as_ref())?;
-        println!("407 write at {}", std::cmp::max(self.len, index + 1));
         self.len = std::cmp::max(self.len, index + 1);
 
         Ok(())
@@ -417,9 +413,7 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
             self.elem_len
         );
         self.store_copy_from_slice(start * self.elem_len, buf)?;
-        println!("420 copy_from_slice {}", std::cmp::max(self.len, start + buf.len() / self.elem_len));
         self.len = std::cmp::max(self.len, start + buf.len() / self.elem_len);
-
         Ok(())
     }
 
@@ -557,7 +551,7 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
     }
 
     fn len(&self) -> usize {
-        println!("level cache len {}", self.len);
+        debug!("level cache len {}", self.len);
         self.len
     }
 
@@ -608,7 +602,6 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         read_start: usize,
         write_start: usize,
     ) -> Result<()> {
-        println!("process_layer");
         // Safety: this operation is safe becase it's a limited
         // writable region on the backing store managed by this type.
         let mut mmap = unsafe {
@@ -751,9 +744,6 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
 
 impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
     pub fn set_len(&mut self, len: usize) {
-        println!("750 set len {}", len);
-        let bt = backtrace::Backtrace::new();
-        println!("{:?}", bt);
         self.len = len;
     }
 
@@ -863,7 +853,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             "out of bounds"
         );
 
-        println!("store_read_range_v2_range {} {}", start, end);
+        debug!("store_read_range_v2_range {} {}", start, end);
 
         // If an external reader was specified for the base layer, use it.
         if start < self.data_width * self.elem_len && self.reader.is_some() {
@@ -891,9 +881,9 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             if pos.len() > 0 {
                 let offset = self.reader.as_ref().unwrap().offset;
                 let st_r = start + offset;
-                // println!("store_read_range_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
+                // debug!("store_read_range_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
                 for (i, j) in pos {
-                    // println!("store_read_range_v2 i is {}, j {}", i, j);
+                    // debug!("store_read_range_v2 i is {}, j {}", i, j);
                     if *i as usize == st_r {
                         let a = *j as usize;
                         let b = *j as usize + read_len;
@@ -901,7 +891,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                         return Ok(read_data);
                     }
                 }
-                println!("store_read_range_v2 found no data");
+                warn!("store_read_range_v2 found no data");
             }else {
                 self.reader
                     .as_ref()
@@ -1061,18 +1051,18 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                 let offset = self.reader.as_ref().unwrap().offset;
                 let st_r = start + offset;
                 let read_len = end - start;
-                // println!("store_read_into_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
+                // debug!("store_read_into_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
                 for (i, j) in pos {
-                    // println!("store_read_into_v2 i is {}, j {}", i, j);
+                    // debug!("store_read_into_v2 i is {}, j {}", i, j);
                     if *i as usize == st_r {
                         let a = *j as usize;
                         let b = *j as usize + read_len;
                         buf.copy_from_slice(&data[a..b]);
-                        // println!("store_read_into_v2 {} {} {} {}", buf[0], buf[1], buf[read_len-1], buf[read_len-2]);
+                        // debug!("store_read_into_v2 {} {} {} {}", buf[0], buf[1], buf[read_len-1], buf[read_len-2]);
                         return Ok(())
                     }
                 }
-                println!("store_read_into_v2 not found data");
+                warn!("store_read_into_v2 not found data");
             }else {
                 self.reader
                     .as_ref()
@@ -1120,7 +1110,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             start <= self.data_width * self.elem_len || start >= self.cache_index_start,
             "Invalid read start"
         );
-        println!("store_read_into_v2_range {} {}", start, end);
+        debug!("store_read_into_v2_range {} {}", start, end);
         // If an external reader was specified for the base layer, use it.
         if start < self.data_width * self.elem_len && self.reader.is_some() {
             let offset = self.reader.as_ref().unwrap().offset;

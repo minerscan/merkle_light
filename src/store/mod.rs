@@ -50,7 +50,7 @@ pub struct MixReader{
 #[allow(unsafe_code)]
 impl MixReader {
     fn read_internal(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<usize>{
-        println!("range read_internal dummy");
+        // debug!("range read_internal dummy");
         self.file.as_ref().unwrap().read_at(pos, buf)
     }
 }
@@ -58,7 +58,7 @@ impl MixReader {
 impl Read for MixReader {
     //dummy
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        println!("range reader read dummy");
+        // debug!("range reader read dummy");
         return self.file.as_ref().unwrap().read(buf);
     }
 }
@@ -66,7 +66,7 @@ impl Read for MixReader {
 #[allow(unsafe_code)]
 impl ReadAt for MixReader {
     fn read_at(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<usize> {
-        println!("range reader read atat dummy");
+        // debug!("range reader read at dummy");
         return self.file.as_ref().unwrap().read_at(pos, buf)
     }
 }
@@ -346,7 +346,6 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
         row_count: usize,
     ) -> Result<E> {
         ensure!(leafs % 2 == 0, "Leafs must be a power of two");
-        println!("build_small_tree");
         let mut level: usize = 0;
         let mut width = leafs;
         let mut level_node_index = 0;
@@ -395,7 +394,6 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
         read_start: usize,
         write_start: usize,
     ) -> Result<()> {
-        println!("mod process_layer");
         let branches = U::to_usize();
         let data_lock = Arc::new(RwLock::new(self));
 

@@ -255,7 +255,7 @@ impl<
                 ExternalReader::new_from_mix_config(replica_config, i)?,
             )
             .context("failed to instantiate levelcache store")?;
-            println!("from_store_configs_and_replica,  {}", data.len());
+            debug!("from_store_configs_and_replica,  {}", data.len());
             trees.push(
                 MerkleTree::<E, A, LevelCacheStore<_, _>, BaseTreeArity>::from_data_store(
                     data, leafs,
@@ -398,7 +398,7 @@ impl<
         );
 
         let tree_len = get_merkle_tree_len(leafs, branches)?;
-        println!("from_data_store Inconsistent tree data {} {}", tree_len, data.len());
+        // debug!("from_data_store Inconsistent tree data {} {}", tree_len, data.len());
         ensure!(tree_len == data.len(), "Inconsistent tree data");
 
         ensure!(
@@ -441,7 +441,7 @@ impl<
         let branches = BaseTreeArity::to_usize();
         let row_count = get_merkle_tree_row_count(leafs, branches);
         let tree_len = get_merkle_tree_len(leafs, branches)?;
-        println!("from_tree_slice Inconsistent tree data {} {}", tree_len, data.len() / E::byte_len());
+        // debug!("from_tree_slice Inconsistent tree data {} {}", tree_len, data.len() / E::byte_len());
         ensure!(
             tree_len == data.len() / E::byte_len(),
             "Inconsistent tree data"
@@ -488,7 +488,7 @@ impl<
         let branches = BaseTreeArity::to_usize();
         let row_count = get_merkle_tree_row_count(leafs, branches);
         let tree_len = get_merkle_tree_len(leafs, branches)?;
-        println!("from_tree_slice_with_config Inconsistent tree data {} {}", tree_len, data.len() / E::byte_len());
+        // debug!("from_tree_slice_with_config Inconsistent tree data {} {}", tree_len, data.len() / E::byte_len());
         ensure!(
             tree_len == data.len() / E::byte_len(),
             "Inconsistent tree data"
@@ -525,7 +525,6 @@ impl<
     pub fn from_trees(
         trees: Vec<MerkleTree<E, A, S, BaseTreeArity>>,
     ) -> Result<MerkleTree<E, A, S, BaseTreeArity, SubTreeArity, TopTreeArity>> {
-        println!("from_trees");
         ensure!(
             SubTreeArity::to_usize() > 0,
             "Cannot use from_trees if not constructing a structure with sub-trees"
@@ -592,7 +591,6 @@ impl<
     pub fn from_sub_trees(
         trees: Vec<MerkleTree<E, A, S, BaseTreeArity, SubTreeArity>>,
     ) -> Result<MerkleTree<E, A, S, BaseTreeArity, SubTreeArity, TopTreeArity>> {
-        println!("from_sub_trees");
         ensure!(
             TopTreeArity::to_usize() > 0,
             "Cannot use from_sub_trees if not constructing a structure with sub-trees"
@@ -653,7 +651,6 @@ impl<
     pub fn from_sub_trees_as_trees(
         mut trees: Vec<MerkleTree<E, A, S, BaseTreeArity>>,
     ) -> Result<MerkleTree<E, A, S, BaseTreeArity, SubTreeArity, TopTreeArity>> {
-        println!("from_sub_trees_as_trees");
         ensure!(
             TopTreeArity::to_usize() > 0,
             "Cannot use from_sub_trees if not constructing a structure with sub-trees"
@@ -771,7 +768,6 @@ impl<
     ) -> Result<MerkleTree<E, A, S, BaseTreeArity, SubTreeArity, TopTreeArity>> {
         let mut trees = Vec::with_capacity(stores.len());
         for store in stores {
-            println!("from_stores {}", leafs);
             trees.push(MerkleTree::<E, A, S, BaseTreeArity>::from_data_store(
                 store, leafs,
             )?);
@@ -798,7 +794,6 @@ impl<
                 config.clone(),
             )
             .context("failed to create data store")?;
-            println!("from_store_configs {}", leafs);
             trees.push(MerkleTree::<E, A, S, BaseTreeArity>::from_data_store(
                 data, leafs,
             )?);
@@ -847,7 +842,7 @@ impl<
         let branches = BaseTreeArity::to_usize();
 
         let tree_len = get_merkle_tree_len(leafs, branches)?;
-        println!("build_partial_tree Inconsistent tree data {} {}", tree_len, Store::len(&data));
+        // debug!("build_partial_tree Inconsistent tree data {} {}", tree_len, Store::len(&data));
         ensure!(tree_len == Store::len(&data), "Inconsistent tree data");
 
         ensure!(
