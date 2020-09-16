@@ -305,10 +305,10 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
         None
     }
     fn read_at(&self, index: usize) -> Result<E>;
-    fn read_at_v2(&self, index: usize, buf:&[u8], pos:&Vec<(u64, u64)>) -> Result<E> {
+    fn read_at_v2(&self, index: usize, _buf:&[u8], _pos:&Vec<(u64, u64)>) -> Result<E> {
         self.read_at(index)
     }
-    fn read_at_v2_range(&self, index: usize, pos: &mut (u64,u64)) -> Result<()> {
+    fn read_at_v2_range(&self, _index: usize, _pos: &mut (u64,u64)) -> Result<()> {
         Ok(())
     }
 
@@ -317,11 +317,11 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
 
     fn read_range_into(&self, start: usize, end: usize, buf: &mut [u8]) -> Result<()>;
     fn read_range_into_v2(&self, start: usize, end: usize, buf: &mut [u8],
-                          data:&[u8], pos:&Vec<(u64, u64)>) -> Result<()>{
+                          _data:&[u8], _pos:&Vec<(u64, u64)>) -> Result<()>{
         self.read_range_into(start, end, buf)
     }
-    fn read_range_into_v2_range(&self, start: usize, end: usize,
-                                pos:&mut (u64, u64)) -> Result<()> {
+    fn read_range_into_v2_range(&self, _start: usize, _end: usize,
+                                _pos:&mut (u64, u64)) -> Result<()> {
         Ok(())
     }
 

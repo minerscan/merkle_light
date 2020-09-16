@@ -22,7 +22,7 @@ use crate::merkle::{
 };
 use crate::store::{ExternalReader, Store, StoreConfig, BUILD_CHUNK_NODES};
 
-use qiniu::service::storage::download::{RangeReader, read_batch, qiniu_is_enable, reader_from_env};
+use qiniu::service::storage::download::{RangeReader, qiniu_is_enable, reader_from_env};
 
 struct MixFile {
     file: File,
@@ -100,7 +100,7 @@ impl MixFile {
         self.file.metadata().unwrap().len() as usize
     }
 
-    fn read_exact_at(&self, mut pos: u64, mut buf: &mut [u8]) -> std::io::Result<()> {
+    fn read_exact_at(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<()> {
         self.file.read_exact_at(pos, buf)
     }
 
@@ -116,7 +116,7 @@ impl MixFile {
         self.file.sync_all()
     }
 
-    fn write_all_at(&mut self, mut pos: u64, mut buf: &[u8]) -> std::io::Result<()> {
+    fn write_all_at(&mut self, pos: u64, buf: &[u8]) -> std::io::Result<()> {
         self.file.write_all_at(pos, buf)
     }
 }
@@ -142,7 +142,7 @@ impl std::io::Write for MixFile {
 pub struct LevelCacheStore<E: Element, R: Read + Send + Sync> {
     len: usize,
     elem_len: usize,
-    file: MixFile,
+    file: MixFile, // last tree file
 
     // The number of base layer data items.
     data_width: usize,
@@ -161,7 +161,7 @@ pub struct LevelCacheStore<E: Element, R: Read + Send + Sync> {
 
     // If provided, the store will use this method to access base
     // layer data.
-    reader: Option<ExternalReader<R>>,
+    reader: Option<ExternalReader<R>>, // remote storage
 
     _e: PhantomData<E>,
 }
@@ -858,10 +858,6 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
 
     pub fn store_read_range_v2_range(&self, start: usize, end: usize,
                                      pos: &mut (u64,u64)) -> Result<()> {
-        let read_len = end - start;
-        let mut read_data = vec![0; read_len];
-        let mut adjusted_start = start;
-
         ensure!(
             start <= self.data_width * self.elem_len || start >= self.cache_index_start,
             "out of bounds"
@@ -895,7 +891,6 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             if pos.len() > 0 {
                 let offset = self.reader.as_ref().unwrap().offset;
                 let st_r = start + offset;
-                let read_len = end - start;
                 // println!("store_read_range_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
                 for (i, j) in pos {
                     // println!("store_read_range_v2 i is {}, j {}", i, j);
