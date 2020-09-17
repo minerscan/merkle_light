@@ -881,13 +881,14 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             if pos.len() > 0 {
                 let offset = self.reader.as_ref().unwrap().offset;
                 let st_r = start + offset;
-                // debug!("store_read_range_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
+                debug!("store_read_range_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
                 for (i, j) in pos {
-                    // debug!("store_read_range_v2 i is {}, j {}", i, j);
-                    if *i as usize == st_r {
+                    if (*i >> 24) as usize == st_r && (*i & 0xFFFFFF) as usize == read_len {
+                        debug!("store_read_range_v2 i-off is {} i-len is {}, j {}", *i >> 24, *i & 0xFFFFFF, j);
                         let a = *j as usize;
                         let b = *j as usize + read_len;
                         read_data.copy_from_slice(&buf[a..b]);
+                        debug!("store_read_range_v2 data {} {} {} {}", read_data[0], read_data[1], read_data[read_len-1], read_data[read_len-2]);
                         return Ok(read_data);
                     }
                 }
@@ -1051,15 +1052,15 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                 let offset = self.reader.as_ref().unwrap().offset;
                 let st_r = start + offset;
                 let read_len = end - start;
-                // debug!("store_read_into_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
+                debug!("store_read_into_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
                 for (i, j) in pos {
-                    // debug!("store_read_into_v2 i is {}, j {}", i, j);
-                    if *i as usize == st_r {
+                    if (*i >> 24) as usize == st_r && (*i & 0xFFFFFF) as usize == read_len {
+                        debug!("store_read_into_v2 i-off is {}, i-len is {}, j {}", *i>>24 , *i & 0xFFFFFF, j);
                         let a = *j as usize;
                         let b = *j as usize + read_len;
                         buf.copy_from_slice(&data[a..b]);
-                        // debug!("store_read_into_v2 {} {} {} {}", buf[0], buf[1], buf[read_len-1], buf[read_len-2]);
-                        return Ok(())
+                        debug!("store_read_into_v2 data {} {} {} {}", buf[0], buf[1], buf[read_len-1], buf[read_len-2]);
+                        return Ok(());
                     }
                 }
                 warn!("store_read_into_v2 not found data");
