@@ -12,7 +12,6 @@ use memmap::MmapOptions;
 use positioned_io::{ReadAt, WriteAt};
 use rayon::iter::*;
 use rayon::prelude::*;
-use tempfile::tempfile;
 use typenum::marker_traits::Unsigned;
 
 use crate::hash::Algorithm;
@@ -26,19 +25,16 @@ use qiniu::service::storage::download::{RangeReader, qiniu_is_enable, reader_fro
 
 use log::{debug, warn};
 
+use tempfile::tempfile;
+
 struct MixFile {
     file: File,
 }
 
 impl MixFile {
-    fn new() {
-
-    }
-
     fn native_exists(path: &std::path::PathBuf) -> bool {
         Path::new(&path).exists()
     }
-
 
     fn qiniu_exists(path: &str) -> bool {
         if qiniu_is_enable() {
@@ -75,10 +71,10 @@ impl MixFile {
             return Ok(MixFile{ file: f})
         }
         let reader = r.unwrap();
-        let ret = reader.download(p_str);
-        debug!("last tree download len is {}", ret);
-        let f = File::open(path)?;
-        return Ok(MixFile{ file: f})
+        let mut f = tempfile()?;
+        let ret = reader.download(&mut f);
+        debug!("last tree download len is {:?}", ret);
+        return Ok(MixFile{ file:f })
     }
 
     fn open_with_create<P: AsRef<Path>>(path: P) -> std::io::Result<MixFile>{
