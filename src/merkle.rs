@@ -456,12 +456,12 @@ impl<
         let root = store.read_at(data.len() - 1)?;
 
         Ok(MerkleTree {
+            path: store.get_path_v2(),
             data: Data::BaseTree(store),
             leafs,
             len: tree_len,
             row_count,
             root,
-            path: None,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,
@@ -504,12 +504,12 @@ impl<
         let root = store.read_at(data.len() - 1)?;
 
         Ok(MerkleTree {
+            path: store.get_path_v2(),
             data: Data::BaseTree(store),
             leafs,
             len: tree_len,
             row_count,
             root,
-            path: None,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,
@@ -570,12 +570,12 @@ impl<
         };
 
         Ok(MerkleTree {
+            path: trees[0].get_path_v2(),
             data: Data::SubTree(trees),
             leafs,
             len,
             row_count,
             root,
-            path: None,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,
@@ -629,12 +629,12 @@ impl<
         };
 
         Ok(MerkleTree {
+            path: trees[0].get_path_v2(),
             data: Data::TopTree(trees),
             leafs,
             len,
             row_count,
             root,
-            path: None,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,
@@ -672,7 +672,7 @@ impl<
             trees.len() == top_layer_nodes,
             "Length of trees MUST equal the number of top layer nodes"
         );
-
+        let path2 = trees[0].get_path_v2();
         // Group the trees appropriately into sub-tree ready vectors.
         let mut grouped_trees = Vec::with_capacity(sub_tree_count);
         for _ in (0..sub_tree_count).step_by(trees.len() / sub_tree_count) {
@@ -706,7 +706,7 @@ impl<
             len,
             row_count,
             root,
-            path: None,
+            path: path2,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,
@@ -851,12 +851,12 @@ impl<
         );
 
         Ok(MerkleTree {
+            path: data.get_path_v2(),
             data: Data::BaseTree(data),
             leafs,
             len: tree_len,
             row_count,
             root,
-            path: None,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,
@@ -2184,12 +2184,12 @@ impl<
         let root = S::build::<A, BaseTreeArity>(&mut data, leafs_count, row_count, Some(config))?;
 
         Ok(MerkleTree {
+            path: data.get_path_v2(),
             data: Data::BaseTree(data),
             leafs: leafs_count,
             len: size,
             row_count,
             root,
-            path: None,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,
@@ -2227,12 +2227,12 @@ impl<
         let root = S::build::<A, BaseTreeArity>(&mut data, leafs_count, row_count, None)?;
 
         Ok(MerkleTree {
+            path: data.get_path_v2(),
             data: Data::BaseTree(data),
             leafs: leafs_count,
             len: size,
             row_count,
             root,
-            path: None,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,
@@ -2295,12 +2295,12 @@ impl<
         let root = S::build::<A, BaseTreeArity>(&mut data, leafs, row_count, None)?;
 
         Ok(MerkleTree {
+            path: data.get_path_v2(),
             data: Data::BaseTree(data),
             leafs,
             len: size,
             row_count,
             root,
-            path: None,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,
@@ -2339,12 +2339,12 @@ impl<
             let root = data.last().context("failed to read root")?;
 
             return Ok(MerkleTree {
+                path: data.get_path_v2(),
                 data: Data::BaseTree(data),
                 leafs,
                 len: size,
                 row_count,
                 root,
-                path: None,
                 _a: PhantomData,
                 _e: PhantomData,
                 _bta: PhantomData,
@@ -2357,12 +2357,12 @@ impl<
         let root = S::build::<A, BaseTreeArity>(&mut data, leafs, row_count, Some(config))?;
 
         Ok(MerkleTree {
+            path: data.get_path_v2(),
             data: Data::BaseTree(data),
             leafs,
             len: size,
             row_count,
             root,
-            path: None,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,
@@ -2406,12 +2406,12 @@ impl<
         let root = S::build::<A, BaseTreeArity>(&mut data, leafs, row_count, None)?;
 
         Ok(MerkleTree {
+            path: data.get_path_v2(),
             data: Data::BaseTree(data),
             leafs,
             len: size,
             row_count,
             root,
-            path: None,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,
@@ -2451,12 +2451,12 @@ impl<
             let root = data.last().context("failed to read root")?;
 
             return Ok(MerkleTree {
+                path: data.get_path_v2(),
                 data: Data::BaseTree(data),
                 leafs,
                 len: size,
                 row_count,
                 root,
-                path: None,
                 _a: PhantomData,
                 _e: PhantomData,
                 _bta: PhantomData,
@@ -2470,12 +2470,12 @@ impl<
         let root = S::build::<A, BaseTreeArity>(&mut data, leafs, row_count, Some(config))?;
 
         Ok(MerkleTree {
+            path: data.get_path_v2(),
             data: Data::BaseTree(data),
             leafs,
             len: size,
             row_count,
             root,
-            path: None,
             _a: PhantomData,
             _e: PhantomData,
             _bta: PhantomData,

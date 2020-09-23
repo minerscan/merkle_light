@@ -59,6 +59,11 @@ impl Read for MixReader {
     //dummy
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         // debug!("range reader read dummy");
+        if self.file.is_none() {
+            let e2 = std::io::Error::new(std::io::ErrorKind::InvalidData,
+                                         "invalid flow read");
+            return Err(e2);
+        }
         return self.file.as_ref().unwrap().read(buf);
     }
 }
@@ -67,7 +72,12 @@ impl Read for MixReader {
 impl ReadAt for MixReader {
     fn read_at(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<usize> {
         // debug!("range reader read at dummy");
-        return self.file.as_ref().unwrap().read_at(pos, buf)
+        if self.file.is_none() {
+            let e2 = std::io::Error::new(std::io::ErrorKind::InvalidData,
+                                         "invalid flow read_at");
+           return Err(e2);
+        }
+        return self.file.as_ref().unwrap().read_at(pos, buf);
     }
 }
 
