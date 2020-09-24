@@ -1,10 +1,11 @@
 use std::fmt;
+use std::env;
 use std::fs::{remove_file, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::ops;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use anyhow::{Context, Result};
@@ -13,6 +14,8 @@ use positioned_io::{ReadAt, WriteAt};
 use rayon::iter::*;
 use rayon::prelude::*;
 use typenum::marker_traits::Unsigned;
+use rand::{thread_rng, seq::SliceRandom};
+use once_cell::sync::Lazy;
 
 use crate::hash::Algorithm;
 use crate::merkle::{
@@ -21,18 +24,18 @@ use crate::merkle::{
 };
 use crate::store::{ExternalReader, Store, StoreConfig, BUILD_CHUNK_NODES};
 
-use qiniu::service::storage::download::{RangeReader, qiniu_is_enable, reader_from_env};
+use qiniu::service::storage::download::{RangeReader, Config, load_conf, qiniu_is_enable, reader_from_env};
 
 use log::{debug, warn};
 
-use tempfile::tempfile;
+use tempfile::{tempfile, tempfile_in};
 
 struct MixFile {
     file: File,
 }
 
 impl MixFile {
-    fn native_exists(path: &std::path::PathBuf) -> bool {
+    fn native_exists(path: &PathBuf) -> bool {
         Path::new(&path).exists()
     }
 
@@ -70,8 +73,9 @@ impl MixFile {
             let f = File::open(path)?;
             return Ok(MixFile{ file: f})
         }
+
         let reader = r.unwrap();
-        let mut f = tempfile()?;
+        let mut f = tempfile_in(Self::temp_dir())?;
         let ret = reader.download(&mut f);
         debug!("last tree download len is {:?}", ret);
         return Ok(MixFile{ file:f })
@@ -117,7 +121,30 @@ impl MixFile {
     fn write_all_at(&mut self, pos: u64, buf: &[u8]) -> std::io::Result<()> {
         self.file.write_all_at(pos, buf)
     }
+
+    fn temp_dir() -> PathBuf {
+        let mut rng = thread_rng();
+        tempdir_indices.choose(&mut rng).map(|dir| dir.to_owned()).unwrap_or_else(env::temp_dir)
+    }
 }
+
+static qiniu_conf: Lazy<Option<Config>> = Lazy::new(load_conf);
+static tempdir_indices: Lazy<Vec<PathBuf>> = Lazy::new(|| {
+    if let Some(config) = &*qiniu_conf {
+        config.tempdirs.iter().fold(Vec::new(), |mut vec, (temp_dir, temp_dir_info)| {
+            let mut weight = temp_dir_info.weight.unwrap_or(1);
+            if weight == 0 {
+                weight = 1;
+            }
+            for _ in 0..weight {
+                vec.push(temp_dir.to_owned());
+            }
+            vec
+        })
+    } else {
+        vec![env::temp_dir()]
+    }
+});
 
 impl std::io::Write for MixFile {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
@@ -286,7 +313,7 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
 
     fn new(size: usize) -> Result<Self> {
         let store_size = E::byte_len() * size;
-        let file = MixFile{file:tempfile()?};
+        let file = MixFile{file: tempfile_in(MixFile::temp_dir())?};
         file.set_len(store_size as u64)?;
         Ok(LevelCacheStore {
             len: 0,
