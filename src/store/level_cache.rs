@@ -24,7 +24,7 @@ use crate::merkle::{
 };
 use crate::store::{ExternalReader, Store, StoreConfig, BUILD_CHUNK_NODES};
 
-use qiniu::service::storage::download::{RangeReader, load_conf, qiniu_is_enable, reader_from_env};
+use qiniu::service::storage::download::{RangeReader, Config, load_conf, qiniu_is_enable, reader_from_env};
 
 use log::{debug, warn};
 
@@ -128,18 +128,22 @@ impl MixFile {
     }
 }
 
+static qiniu_conf: Lazy<Option<Config>> = Lazy::new(load_conf);
 static tempdir_indices: Lazy<Vec<PathBuf>> = Lazy::new(|| {
-    let config = load_conf().unwrap();
-    config.tempdirs.iter().fold(Vec::new(), |mut vec, (temp_dir, temp_dir_info)| {
-        let mut weight = temp_dir_info.weight.unwrap_or(1);
-        if weight == 0 {
-            weight = 1;
-        }
-        for _ in 0..weight {
-            vec.push(temp_dir.to_owned());
-        }
-        vec
-    })
+    if let Some(config) = &*qiniu_conf {
+        config.tempdirs.iter().fold(Vec::new(), |mut vec, (temp_dir, temp_dir_info)| {
+            let mut weight = temp_dir_info.weight.unwrap_or(1);
+            if weight == 0 {
+                weight = 1;
+            }
+            for _ in 0..weight {
+                vec.push(temp_dir.to_owned());
+            }
+            vec
+        })
+    } else {
+        vec![env::temp_dir()]
+    }
 });
 
 impl std::io::Write for MixFile {
