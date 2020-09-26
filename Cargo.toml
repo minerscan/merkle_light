@@ -37,6 +37,7 @@ anyhow = "1.0.23"
 typenum = "1.11.2"
 qiniu = { path = "../rust-fil-proofs2/qiniu"}
 backtrace = "0.3.50"
+once_cell = "1.4.1"
 
 [dev-dependencies]
 byteorder = "1.3.1"

@@ -11,7 +11,8 @@ use typenum::{U0, U2};
 use crate::hash::{Algorithm, Hashable};
 use crate::proof::Proof;
 use crate::store::{
-    MixReader, ExternalReader, LevelCacheStore, ReplicaConfig, Store, StoreConfig, VecStore, BUILD_CHUNK_NODES,
+    ExternalReader, LevelCacheStore, MixReader, ReplicaConfig, Store, StoreConfig, VecStore,
+    BUILD_CHUNK_NODES,
 };
 
 use std::collections::HashMap;
@@ -209,8 +210,7 @@ impl<
         BaseTreeArity: Unsigned,
         SubTreeArity: Unsigned,
         TopTreeArity: Unsigned,
-    >
-    MerkleTree<E, A, LevelCacheStore<E, MixReader>, BaseTreeArity, SubTreeArity, TopTreeArity>
+    > MerkleTree<E, A, LevelCacheStore<E, MixReader>, BaseTreeArity, SubTreeArity, TopTreeArity>
 {
     /// Given a pathbuf, instantiate an ExternalReader and set it for the LevelCacheStore.
     pub fn set_external_reader_path(&mut self, path: &PathBuf) -> Result<()> {
@@ -234,14 +234,7 @@ impl<
         configs: &[StoreConfig],
         replica_config: &ReplicaConfig,
     ) -> Result<
-        MerkleTree<
-            E,
-            A,
-            LevelCacheStore<E, MixReader>,
-            BaseTreeArity,
-            SubTreeArity,
-            TopTreeArity,
-        >,
+        MerkleTree<E, A, LevelCacheStore<E, MixReader>, BaseTreeArity, SubTreeArity, TopTreeArity>,
     > {
         let branches = BaseTreeArity::to_usize();
         let mut trees = Vec::with_capacity(configs.len());
@@ -280,14 +273,7 @@ impl<
         configs: &[StoreConfig],
         replica_config: &ReplicaConfig,
     ) -> Result<
-        MerkleTree<
-            E,
-            A,
-            LevelCacheStore<E, MixReader>,
-            BaseTreeArity,
-            SubTreeArity,
-            TopTreeArity,
-        >,
+        MerkleTree<E, A, LevelCacheStore<E, MixReader>, BaseTreeArity, SubTreeArity, TopTreeArity>,
     > {
         ensure!(
             configs.len() == replica_config.offsets.len(),
@@ -1010,8 +996,8 @@ impl<
         &self,
         i: usize,
         rows_to_discard: Option<usize>,
-        list:&mut Vec<(u64, u64)>,
-        lstree:&mut HashMap<String, Vec<(u64, u64)>>
+        list: &mut Vec<(u64, u64)>,
+        lstree: &mut HashMap<String, Vec<(u64, u64)>>,
     ) -> Result<()> {
         ensure!(Arity::to_usize() != 0, "Invalid top-tree arity");
         ensure!(
@@ -1033,15 +1019,16 @@ impl<
 
         // Generate the proof that will validate to the provided
         // sub-tree root (note the branching factor of B).
-       return tree.gen_cached_proof_v2_ranges(leaf_index, rows_to_discard, list, lstree);
+        return tree.gen_cached_proof_v2_ranges(leaf_index, rows_to_discard, list, lstree);
     }
 
     fn gen_cached_top_tree_proof_v2<Arity: Unsigned>(
         &self,
         i: usize,
         rows_to_discard: Option<usize>,
-        buf:&[u8], pos:&Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>
+        buf: &[u8],
+        pos: &Vec<(u64, u64)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
     ) -> Result<Proof<E, BaseTreeArity>> {
         ensure!(Arity::to_usize() != 0, "Invalid top-tree arity");
         ensure!(
@@ -1063,7 +1050,8 @@ impl<
 
         // Generate the proof that will validate to the provided
         // sub-tree root (note the branching factor of B).
-        let sub_tree_proof = tree.gen_cached_proof_v2(leaf_index, rows_to_discard, buf, pos, lstree)?;
+        let sub_tree_proof =
+            tree.gen_cached_proof_v2(leaf_index, rows_to_discard, buf, pos, lstree)?;
 
         // Construct the top layer proof.  'lemma' length is
         // top_layer_nodes - 1 + root == top_layer_nodes
@@ -1136,8 +1124,8 @@ impl<
         &self,
         i: usize,
         rows_to_discard: Option<usize>,
-        list:&mut Vec<(u64, u64)>,
-        lstree: &mut HashMap<String, Vec<(u64, u64)>>
+        list: &mut Vec<(u64, u64)>,
+        lstree: &mut HashMap<String, Vec<(u64, u64)>>,
     ) -> Result<()> {
         ensure!(Arity::to_usize() != 0, "Invalid sub-tree arity");
         ensure!(
@@ -1166,8 +1154,9 @@ impl<
         &self,
         i: usize,
         rows_to_discard: Option<usize>,
-        buf:&[u8], pos:&Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>
+        buf: &[u8],
+        pos: &Vec<(u64, u64)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
     ) -> Result<Proof<E, BaseTreeArity>> {
         ensure!(Arity::to_usize() != 0, "Invalid sub-tree arity");
         ensure!(
@@ -1189,7 +1178,8 @@ impl<
 
         // Generate the proof that will validate to the provided
         // sub-tree root (note the branching factor of B).
-        let sub_tree_proof = tree.gen_cached_proof_v2(leaf_index, rows_to_discard, buf, pos, lstree)?;
+        let sub_tree_proof =
+            tree.gen_cached_proof_v2(leaf_index, rows_to_discard, buf, pos, lstree)?;
 
         // Construct the top layer proof.  'lemma' length is
         // top_layer_nodes - 1 + root == top_layer_nodes
@@ -1267,11 +1257,22 @@ impl<
         &self,
         i: usize,
         rows_to_discard: Option<usize>,
-        list:&mut Vec<(u64, u64)>,
-        lstree:&mut HashMap<String, Vec<(u64, u64)>>) -> Result<()>{
+        list: &mut Vec<(u64, u64)>,
+        lstree: &mut HashMap<String, Vec<(u64, u64)>>,
+    ) -> Result<()> {
         match &self.data {
-            Data::TopTree(_) => self.gen_cached_top_tree_proof_v2_ranges::<TopTreeArity>(i, rows_to_discard, list, lstree),
-            Data::SubTree(_) => self.gen_cached_sub_tree_proof_v2_ranges::<SubTreeArity>(i, rows_to_discard, list, lstree),
+            Data::TopTree(_) => self.gen_cached_top_tree_proof_v2_ranges::<TopTreeArity>(
+                i,
+                rows_to_discard,
+                list,
+                lstree,
+            ),
+            Data::SubTree(_) => self.gen_cached_sub_tree_proof_v2_ranges::<SubTreeArity>(
+                i,
+                rows_to_discard,
+                list,
+                lstree,
+            ),
             Data::BaseTree(_) => {
                 ensure!(
                     i < self.leafs,
@@ -1330,12 +1331,12 @@ impl<
                        cached_leafs, segment_width, segment_start, segment_end, i);
 
                 ensure!(self.data.store().is_some(), "store data required");
-                let mut pos:(u64,u64) = (0,0);
+                let mut pos: (u64, u64) = (0, 0);
                 self.data.store().unwrap().read_range_into_v2_range(
                     segment_start,
                     segment_end,
                     &mut pos,
-                    lstree
+                    lstree,
                 )?;
                 if pos.1 != 0 {
                     list.push(pos);
@@ -1353,12 +1354,25 @@ impl<
         &self,
         i: usize,
         rows_to_discard: Option<usize>,
-        buf:&[u8], pos:&Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>
+        buf: &[u8],
+        pos: &Vec<(u64, u64)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
     ) -> Result<Proof<E, BaseTreeArity>> {
         match &self.data {
-            Data::TopTree(_) => self.gen_cached_top_tree_proof_v2::<TopTreeArity>(i, rows_to_discard, buf, pos, lstree),
-            Data::SubTree(_) => self.gen_cached_sub_tree_proof_v2::<SubTreeArity>(i, rows_to_discard, buf, pos, lstree),
+            Data::TopTree(_) => self.gen_cached_top_tree_proof_v2::<TopTreeArity>(
+                i,
+                rows_to_discard,
+                buf,
+                pos,
+                lstree,
+            ),
+            Data::SubTree(_) => self.gen_cached_sub_tree_proof_v2::<SubTreeArity>(
+                i,
+                rows_to_discard,
+                buf,
+                pos,
+                lstree,
+            ),
             Data::BaseTree(_) => {
                 ensure!(
                     i < self.leafs,
@@ -1427,7 +1441,7 @@ impl<
                     &mut data_copy,
                     buf,
                     pos,
-                    lstree
+                    lstree,
                 )?;
                 let partial_store = VecStore::new_from_slice(segment_width, &data_copy)?;
                 ensure!(
@@ -1452,7 +1466,14 @@ impl<
 
                 // Generate entire proof with access to the base data, the
                 // cached data, and the partial tree.
-                let proof = self.gen_proof_with_partial_tree_v2(i, rows_to_discard, &partial_tree, buf, pos, lstree)?;
+                let proof = self.gen_proof_with_partial_tree_v2(
+                    i,
+                    rows_to_discard,
+                    &partial_tree,
+                    buf,
+                    pos,
+                    lstree,
+                )?;
 
                 debug!(
                     "generated partial_tree of row_count {} and len {} with {} branches for proof at {}",
@@ -1592,8 +1613,8 @@ impl<
         &self,
         i: usize,
         rows_to_discard: usize,
-        list:&mut Vec<(u64, u64)>,
-        lstree: &mut HashMap<String, Vec<(u64, u64)>>
+        list: &mut Vec<(u64, u64)>,
+        lstree: &mut HashMap<String, Vec<(u64, u64)>>,
     ) -> Result<()> {
         ensure!(
             i < self.leafs,
@@ -1663,7 +1684,7 @@ impl<
             TopTreeArity::to_usize() == 0,
             "Data slice must not have a top layer"
         );
-        let mut pos:(u64, u64) = (0, 0);
+        let mut pos: (u64, u64) = (0, 0);
         self.read_at_v2_range(j, &mut pos, lstree)?;
         if pos.1 != 0 {
             list.push(pos);
@@ -1674,7 +1695,7 @@ impl<
             for k in hash_index..hash_index + branches {
                 if k != j {
                     let read_index = base + k;
-                    let mut pos:(u64, u64) = (0, 0);
+                    let mut pos: (u64, u64) = (0, 0);
                     if read_index < data_width || read_index >= cache_index_start {
                         self.read_at_v2_range(base + k, &mut pos, lstree)?;
                         if pos.1 != 0 {
@@ -1703,8 +1724,9 @@ impl<
         i: usize,
         rows_to_discard: usize,
         partial_tree: &MerkleTree<E, A, VecStore<E>, BaseTreeArity>,
-        data:&[u8], pos:&Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>
+        data: &[u8],
+        pos: &Vec<(u64, u64)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
     ) -> Result<Proof<E, BaseTreeArity>> {
         ensure!(
             i < self.leafs,
@@ -2028,7 +2050,12 @@ impl<
         }
     }
 
-    pub fn read_at_v2_range(&self, i: usize, pos: &mut (u64,u64), lstree: &mut HashMap<String, Vec<(u64, u64)>>) -> Result<()> {
+    pub fn read_at_v2_range(
+        &self,
+        i: usize,
+        pos: &mut (u64, u64),
+        lstree: &mut HashMap<String, Vec<(u64, u64)>>,
+    ) -> Result<()> {
         match &self.data {
             Data::TopTree(sub_trees) => {
                 // Locate the top-layer tree the sub-tree leaf is contained in.
@@ -2067,7 +2094,13 @@ impl<
         }
     }
 
-    pub fn read_at_v2(&self, i: usize, buf:&[u8], pos:&Vec<(u64, u64)>, lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>) -> Result<E> {
+    pub fn read_at_v2(
+        &self,
+        i: usize,
+        buf: &[u8],
+        pos: &Vec<(u64, u64)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+    ) -> Result<E> {
         match &self.data {
             Data::TopTree(sub_trees) => {
                 // Locate the top-layer tree the sub-tree leaf is contained in.

@@ -1,15 +1,16 @@
+use std::env;
 use std::fmt;
 use std::fs::{remove_file, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::ops;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use anyhow::{Context, Result};
 use memmap::MmapOptions;
-use positioned_io::{ReadAt, WriteAt, Size};
+use positioned_io::{ReadAt, Size, WriteAt};
 use rayon::iter::*;
 use rayon::prelude::*;
 use typenum::marker_traits::Unsigned;
@@ -33,60 +34,72 @@ use backtrace::Backtrace;
 
 struct MixFile {
     file: Option<File>,
-    path:Option<String>,
+    path: Option<String>,
     length: Option<u64>,
     last_bytes: Option<Vec<u8>>,
 }
 
 impl MixFile {
-    fn native_exists(path: &std::path::PathBuf) -> bool {
+    fn native_exists(path: &PathBuf) -> bool {
         Path::new(&path).exists()
     }
 
-    fn qiniu_open(path: &str, len: usize)  -> std::io::Result<MixFile> {
+    fn qiniu_open(path: &str, len: usize) -> std::io::Result<MixFile> {
         let r = reader_from_env(path).unwrap().read_last_bytes(len)?;
         println!("read qiniu open {} {}", path, len);
-        println!("qiniu data {} {}", &r.1[0], &r.1[len-1]);
-        return Ok(MixFile{ file:None,
+        println!("qiniu data {} {}", &r.1[0], &r.1[len - 1]);
+        return Ok(MixFile {
+            file: None,
             path: Some(path.to_string()),
-            length:Some(r.0),
-            last_bytes: Some(r.1)
+            length: Some(r.0),
+            last_bytes: Some(r.1),
         });
     }
 
     fn open<P: AsRef<Path>>(path: P) -> std::io::Result<MixFile> {
-        let bt = Backtrace::new();
-
-        // do_some_work();
-
-        println!("open {:?}", bt);
-
         let f = File::open(path)?;
-        return Ok(MixFile{length: Some(f.metadata().unwrap().len()), file: Some(f), path: None, last_bytes:None});
+        return Ok(MixFile {
+            length: Some(f.metadata().unwrap().len()),
+            file: Some(f),
+            path: None,
+            last_bytes: None,
+        });
     }
 
-    fn open_with_create<P: AsRef<Path>>(path: P) -> std::io::Result<MixFile>{
+    fn open_with_create<P: AsRef<Path>>(path: P) -> std::io::Result<MixFile> {
         let f = OpenOptions::new()
             .write(true)
             .read(true)
             .create_new(true)
             .open(path)?;
-        Ok(MixFile{ file: Some(f), path: None, length:None, last_bytes: None })
+        Ok(MixFile {
+            file: Some(f),
+            path: None,
+            length: None,
+            last_bytes: None,
+        })
     }
 
-    fn open_with_write<P: AsRef<Path>>(path: P) -> std::io::Result<MixFile>{
-        let f = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(path)?;
-        Ok(MixFile{ file: Some(f), path:None, length:None, last_bytes: None })
+    fn open_with_write<P: AsRef<Path>>(path: P) -> std::io::Result<MixFile> {
+        let f = OpenOptions::new().read(true).write(true).open(path)?;
+        Ok(MixFile {
+            file: Some(f),
+            path: None,
+            length: None,
+            last_bytes: None,
+        })
     }
 
-    fn open_temp() -> std::io::Result<MixFile>{
-        Ok(MixFile{file:Some(tempfile()?), path: None, last_bytes:None, length:None})
+    fn open_temp() -> std::io::Result<MixFile> {
+        Ok(MixFile {
+            file: Some(tempfile()?),
+            path: None,
+            last_bytes: None,
+            length: None,
+        })
     }
 
-    fn len(&self) -> usize{
+    fn len(&self) -> usize {
         if self.length.is_some() {
             return self.length.unwrap() as usize;
         }
@@ -103,7 +116,14 @@ impl MixFile {
         // do_some_work();
 
         println!("read exact at {:?}", bt);
-        println!("read path {:?} at {} size {} f len {:?} {} ", self.path, pos, buf.len(), self.length, self.last_bytes.is_some());
+        println!(
+            "read path {:?} at {} size {} f len {:?} {} ",
+            self.path,
+            pos,
+            buf.len(),
+            self.length,
+            self.last_bytes.is_some()
+        );
 
         if self.file.is_some() {
             return self.file.as_ref().unwrap().read_exact_at(pos, buf);
@@ -112,17 +132,16 @@ impl MixFile {
         if self.length.is_some() && self.last_bytes.is_some() {
             let l = self.length.unwrap() as i64;
             let data = self.last_bytes.as_ref().unwrap();
-            let start = pos as i64 - (l - data.len() as i64) ;
-            let end = start as usize +buf.len();
+            let start = pos as i64 - (l - data.len() as i64);
+            let end = start as usize + buf.len();
             println!("start is {} end {}", start, end);
             println!("data size {} {}", buf.len(), data.len());
-            if start >= 0{
+            if start >= 0 {
                 buf.copy_from_slice(&data[(start as usize)..end]);
-                return Ok(())
+                return Ok(());
             }
         }
-        let e2 = std::io::Error::new(std::io::ErrorKind::NotFound,
-                                     "mixfile has no file");
+        let e2 = std::io::Error::new(std::io::ErrorKind::NotFound, "mixfile has no file");
         return Err(e2);
     }
 
@@ -137,7 +156,7 @@ impl MixFile {
         self.file.as_ref().unwrap().seek(pos)
     }
 
-    fn sync_all(&self) -> std::io::Result<()>  {
+    fn sync_all(&self) -> std::io::Result<()> {
         self.file.as_ref().unwrap().sync_all()
     }
 
@@ -216,7 +235,12 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
 
         let file = MixFile::open(data_path)?;
         let store_size = file.len();
-        debug!("new_from_disk_with_reader > {} {} {}", store_range, store_size, E::byte_len());
+        debug!(
+            "new_from_disk_with_reader > {} {} {}",
+            store_range,
+            store_size,
+            E::byte_len()
+        );
         // The LevelCacheStore base data layer must already be a
         // massaged next pow2 (guaranteed if created with
         // DiskStore::compact, which is the only supported method at
@@ -270,7 +294,12 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
 }
 
 impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
-    fn new_with_config_v2(size: usize, branches: usize, config: StoreConfig, post: bool) -> Result<Self> {
+    fn new_with_config_v2(
+        size: usize,
+        branches: usize,
+        config: StoreConfig,
+        post: bool,
+    ) -> Result<Self> {
         let data_path = StoreConfig::data_path(&config.path, &config.id);
 
         // If the specified file exists, load it from disk.  This is
@@ -380,7 +409,12 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
     fn new_from_disk(store_range: usize, branches: usize, config: &StoreConfig) -> Result<Self> {
         return Self::new_from_disk_v2(store_range, branches, config, false);
     }
-    fn new_from_disk_v2(store_range: usize, branches: usize, config: &StoreConfig, post: bool) -> Result<Self> {
+    fn new_from_disk_v2(
+        store_range: usize,
+        branches: usize,
+        config: &StoreConfig,
+        post: bool,
+    ) -> Result<Self> {
         let data_path = StoreConfig::data_path(&config.path, &config.id);
         let file = if post && qiniu_is_enable() {
             MixFile::qiniu_open(data_path.to_str().unwrap(), E::byte_len())?
@@ -455,8 +489,12 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         Ok(())
     }
 
-    fn read_at_v2_range(&self, index: usize, pos: &mut (u64,u64),
-                        lstree: &mut HashMap<String, Vec<(u64, u64)>>) -> Result<()> {
+    fn read_at_v2_range(
+        &self,
+        index: usize,
+        pos: &mut (u64, u64),
+        lstree: &mut HashMap<String, Vec<(u64, u64)>>,
+    ) -> Result<()> {
         let start = index * self.elem_len;
         let end = start + self.elem_len;
 
@@ -478,8 +516,13 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         return None;
     }
 
-    fn read_at_v2(&self, index: usize, buf:&[u8], pos:&Vec<(u64, u64)>,
-                  lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>) -> Result<E> {
+    fn read_at_v2(
+        &self,
+        index: usize,
+        buf: &[u8],
+        pos: &Vec<(u64, u64)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+    ) -> Result<E> {
         let start = index * self.elem_len;
         let end = start + self.elem_len;
 
@@ -491,7 +534,9 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
             "out of bounds"
         );
 
-        Ok(E::from_slice(&self.store_read_range_v2(start, end, buf, pos, lstree)?))
+        Ok(E::from_slice(
+            &self.store_read_range_v2(start, end, buf, pos, lstree)?,
+        ))
     }
 
     fn read_at(&self, index: usize) -> Result<E> {
@@ -539,9 +584,15 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         self.store_read_into(start, end, buf)
     }
 
-    fn read_range_into_v2(&self, start: usize, end: usize, buf: &mut [u8],
-                          data:&[u8], pos:&Vec<(u64, u64)>,
-                          lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>) -> Result<()> {
+    fn read_range_into_v2(
+        &self,
+        start: usize,
+        end: usize,
+        buf: &mut [u8],
+        data: &[u8],
+        pos: &Vec<(u64, u64)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+    ) -> Result<()> {
         let start = start * self.elem_len;
         let end = end * self.elem_len;
 
@@ -556,8 +607,13 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         self.store_read_into_v2(start, end, buf, data, pos, lstree)
     }
 
-    fn read_range_into_v2_range(&self, start: usize, end: usize, pos:&mut (u64, u64),
-                                lstree: &mut HashMap<String, Vec<(u64, u64)>>) -> Result<()> {
+    fn read_range_into_v2_range(
+        &self,
+        start: usize,
+        end: usize,
+        pos: &mut (u64, u64),
+        lstree: &mut HashMap<String, Vec<(u64, u64)>>,
+    ) -> Result<()> {
         let start = start * self.elem_len;
         let end = end * self.elem_len;
 
@@ -808,7 +864,10 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         self.file.seek(SeekFrom::Start(0))?;
 
         let written = copy(&mut reader, &mut self.file)?;
-        ensure!(written == store_size as u64 - len, "Failed to copy all data");
+        ensure!(
+            written == store_size as u64 - len,
+            "Failed to copy all data"
+        );
 
         self.file.set_len(written)?;
 
@@ -887,8 +946,13 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         Ok(store_size == cache_size)
     }
 
-    pub fn store_read_range_v2_range(&self, start: usize, end: usize, pos: &mut (u64,u64),
-                                     lstree: &mut HashMap<String, Vec<(u64, u64)>>) -> Result<()> {
+    pub fn store_read_range_v2_range(
+        &self,
+        start: usize,
+        end: usize,
+        pos: &mut (u64, u64),
+        lstree: &mut HashMap<String, Vec<(u64, u64)>>,
+    ) -> Result<()> {
         ensure!(
             start <= self.data_width * self.elem_len || start >= self.cache_index_start,
             "out of bounds"
@@ -905,7 +969,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             let st_r = start + offset;
             pos.0 = st_r as u64;
             pos.1 = read_len as u64;
-            return Ok(())
+            return Ok(());
         }
 
         // Adjust read index if in the cached ranged to be shifted
@@ -923,14 +987,25 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             return Ok(());
         }
         let s1 = s.as_ref().unwrap();
-        let last_ranges = lstree.entry(s1.to_string()).or_insert(Vec::with_capacity(10));
+        let last_ranges = lstree
+            .entry(s1.to_string())
+            .or_insert(Vec::with_capacity(10));
         last_ranges.push((adjusted_start as u64, read_len as u64));
-        debug!("store_read_range_v2_range last {} {}", adjusted_start, read_len);
+        debug!(
+            "store_read_range_v2_range last {} {}",
+            adjusted_start, read_len
+        );
         return Ok(());
     }
 
-    pub fn store_read_range_v2(&self, start: usize, end: usize, buf:&[u8], pos:&Vec<(u64, u64)>,
-                               lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>) -> Result<Vec<u8>> {
+    pub fn store_read_range_v2(
+        &self,
+        start: usize,
+        end: usize,
+        buf: &[u8],
+        pos: &Vec<(u64, u64)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+    ) -> Result<Vec<u8>> {
         let read_len = end - start;
         let mut read_data = vec![0; read_len];
         let mut adjusted_start = start;
@@ -945,19 +1020,36 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             if pos.len() > 0 {
                 let offset = self.reader.as_ref().unwrap().offset;
                 let st_r = start + offset;
-                debug!("store_read_range_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
+                debug!(
+                    "store_read_range_v2 {}, {}, {}, {}",
+                    offset,
+                    st_r,
+                    read_len,
+                    pos.len()
+                );
                 for (i, j) in pos {
                     if (*i >> 24) as usize == st_r && (*i & 0xFFFFFF) as usize == read_len {
-                        debug!("store_read_range_v2 i-off is {} i-len is {}, j {}", *i >> 24, *i & 0xFFFFFF, j);
+                        debug!(
+                            "store_read_range_v2 i-off is {} i-len is {}, j {}",
+                            *i >> 24,
+                            *i & 0xFFFFFF,
+                            j
+                        );
                         let a = *j as usize;
                         let b = *j as usize + read_len;
                         read_data.copy_from_slice(&buf[a..b]);
-                        debug!("store_read_range_v2 data {} {} {} {}", read_data[0], read_data[1], read_data[read_len-1], read_data[read_len-2]);
+                        debug!(
+                            "store_read_range_v2 data {} {} {} {}",
+                            read_data[0],
+                            read_data[1],
+                            read_data[read_len - 1],
+                            read_data[read_len - 2]
+                        );
                         return Ok(read_data);
                     }
                 }
                 warn!("store_read_range_v2 found no data");
-            }else {
+            } else {
                 self.reader
                     .as_ref()
                     .unwrap()
@@ -998,11 +1090,22 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             let buf = &temp.0;
             for (i, j) in pos {
                 if (*i >> 24) as usize == adjusted_start && (*i & 0xFFFFFF) as usize == read_len {
-                    debug!("store_read_range_v2 ltree i-off is {} i-len is {}, j {}", *i >> 24, *i & 0xFFFFFF, j);
+                    debug!(
+                        "store_read_range_v2 ltree i-off is {} i-len is {}, j {}",
+                        *i >> 24,
+                        *i & 0xFFFFFF,
+                        j
+                    );
                     let a = *j as usize;
                     let b = *j as usize + read_len;
                     read_data.copy_from_slice(&buf[a..b]);
-                    debug!("store_read_range_v2 ltree data {} {} {} {}", read_data[0], read_data[1], read_data[read_len-1], read_data[read_len-2]);
+                    debug!(
+                        "store_read_range_v2 ltree data {} {} {} {}",
+                        read_data[0],
+                        read_data[1],
+                        read_data[read_len - 1],
+                        read_data[read_len - 2]
+                    );
                     return Ok(read_data);
                 }
             }
@@ -1130,9 +1233,15 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         Ok(E::from_slice(&self.store_read_range_internal(start, end)?))
     }
 
-    pub fn store_read_into_v2(&self, start: usize, end: usize, buf: &mut [u8],
-                              data:&[u8], pos:&Vec<(u64, u64)>,
-                              lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>) -> Result<()> {
+    pub fn store_read_into_v2(
+        &self,
+        start: usize,
+        end: usize,
+        buf: &mut [u8],
+        data: &[u8],
+        pos: &Vec<(u64, u64)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+    ) -> Result<()> {
         ensure!(
             start <= self.data_width * self.elem_len || start >= self.cache_index_start,
             "Invalid read start"
@@ -1145,19 +1254,36 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                 let offset = self.reader.as_ref().unwrap().offset;
                 let st_r = start + offset;
 
-                debug!("store_read_into_v2 {}, {}, {}, {}", offset, st_r, read_len, pos.len());
+                debug!(
+                    "store_read_into_v2 {}, {}, {}, {}",
+                    offset,
+                    st_r,
+                    read_len,
+                    pos.len()
+                );
                 for (i, j) in pos {
                     if (*i >> 24) as usize == st_r && (*i & 0xFFFFFF) as usize == read_len {
-                        debug!("store_read_into_v2 i-off is {}, i-len is {}, j {}", *i>>24 , *i & 0xFFFFFF, j);
+                        debug!(
+                            "store_read_into_v2 i-off is {}, i-len is {}, j {}",
+                            *i >> 24,
+                            *i & 0xFFFFFF,
+                            j
+                        );
                         let a = *j as usize;
                         let b = *j as usize + read_len;
                         buf.copy_from_slice(&data[a..b]);
-                        debug!("store_read_into_v2 data {} {} {} {}", buf[0], buf[1], buf[read_len-1], buf[read_len-2]);
+                        debug!(
+                            "store_read_into_v2 data {} {} {} {}",
+                            buf[0],
+                            buf[1],
+                            buf[read_len - 1],
+                            buf[read_len - 2]
+                        );
                         return Ok(());
                     }
                 }
                 warn!("store_read_into_v2 not found data");
-            }else {
+            } else {
                 self.reader
                     .as_ref()
                     .unwrap()
@@ -1196,12 +1322,24 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                 let pos = &temp.1;
                 let data = &temp.0;
                 for (i, j) in pos {
-                    if (*i >> 24) as usize == adjusted_start && (*i & 0xFFFFFF) as usize == read_len {
-                        debug!("store_read_into_v2 ltree i-off is {} i-len is {}, j {}", *i >> 24, *i & 0xFFFFFF, j);
+                    if (*i >> 24) as usize == adjusted_start && (*i & 0xFFFFFF) as usize == read_len
+                    {
+                        debug!(
+                            "store_read_into_v2 ltree i-off is {} i-len is {}, j {}",
+                            *i >> 24,
+                            *i & 0xFFFFFF,
+                            j
+                        );
                         let a = *j as usize;
                         let b = *j as usize + read_len;
                         buf.copy_from_slice(&data[a..b]);
-                        debug!("store_read_into_v2 ltree data {} {} {} {}", buf[0], buf[1], buf[read_len-1], buf[read_len-2]);
+                        debug!(
+                            "store_read_into_v2 ltree data {} {} {} {}",
+                            buf[0],
+                            buf[1],
+                            buf[read_len - 1],
+                            buf[read_len - 2]
+                        );
                         return Ok(());
                     }
                 }
@@ -1222,8 +1360,13 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         Ok(())
     }
 
-    pub fn store_read_into_v2_range(&self, start: usize, end: usize, pos: &mut (u64,u64),
-                                    lstree: &mut HashMap<String, Vec<(u64, u64)>>) -> Result<()> {
+    pub fn store_read_into_v2_range(
+        &self,
+        start: usize,
+        end: usize,
+        pos: &mut (u64, u64),
+        lstree: &mut HashMap<String, Vec<(u64, u64)>>,
+    ) -> Result<()> {
         ensure!(
             start <= self.data_width * self.elem_len || start >= self.cache_index_start,
             "Invalid read start"
@@ -1237,28 +1380,33 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             let st_r = start + offset;
             pos.0 = st_r as u64;
             pos.1 = read_len as u64;
-            return Ok(())
+            return Ok(());
         }
-            // Adjust read index if in the cached ranged to be shifted
-            // over since the data stored is compacted.
-            let adjusted_start = if start >= self.cache_index_start {
-                if self.reader.is_none() {
-                    // if v1
-                    start - self.cache_index_start + (self.data_width * self.elem_len)
-                } else {
-                    start - self.cache_index_start
-                }
+        // Adjust read index if in the cached ranged to be shifted
+        // over since the data stored is compacted.
+        let adjusted_start = if start >= self.cache_index_start {
+            if self.reader.is_none() {
+                // if v1
+                start - self.cache_index_start + (self.data_width * self.elem_len)
             } else {
-                start
-            };
-
-            if s.is_none() {
-                return Ok(());
+                start - self.cache_index_start
             }
-            let s1 = s.as_ref().unwrap();
-            let last_ranges = lstree.entry(s1.to_string()).or_insert(Vec::with_capacity(10));
-            last_ranges.push((adjusted_start as u64, read_len as u64));
-        debug!("store_read_into_v2_range ltree {} {}", adjusted_start, read_len);
+        } else {
+            start
+        };
+
+        if s.is_none() {
+            return Ok(());
+        }
+        let s1 = s.as_ref().unwrap();
+        let last_ranges = lstree
+            .entry(s1.to_string())
+            .or_insert(Vec::with_capacity(10));
+        last_ranges.push((adjusted_start as u64, read_len as u64));
+        debug!(
+            "store_read_into_v2_range ltree {} {}",
+            adjusted_start, read_len
+        );
         Ok(())
     }
 
@@ -1321,21 +1469,21 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::{boxed::Box, error::Error, result::Result};
-    use std::env;
-
-
-    #[test]
-    fn test_last_read(){
-        env::set_var("QINIU", "/Users/long/projects/filecoin/goupload/sim.toml");
-        let p = "/Users/long/projects/filecoin/lotus/stdir/bench890193298/cache/s-t01000-1/sc-02-data-tree-r-last.dat";
-        let f = MixFile::qiniu_open(p, 64).unwrap();
-        let mut bytes = vec![0; 64];
-
-        let ret = f.read_exact_at(f.len() as u64 -64, &mut bytes);
-        assert!(ret.is_ok())
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use std::{boxed::Box, error::Error, result::Result};
+//     use std::env;
+//
+//
+//     #[test]
+//     fn test_last_read(){
+//         env::set_var("QINIU", "/Users/long/projects/filecoin/goupload/sim.toml");
+//         let p = "/Users/long/projects/filecoin/lotus/stdir/bench890193298/cache/s-t01000-1/sc-02-data-tree-r-last.dat";
+//         let f = MixFile::qiniu_open(p, 64).unwrap();
+//         let mut bytes = vec![0; 64];
+//
+//         let ret = f.read_exact_at(f.len() as u64 -64, &mut bytes);
+//         assert!(ret.is_ok())
+//     }
+// }

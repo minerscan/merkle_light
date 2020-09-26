@@ -42,16 +42,15 @@ pub use level_cache::LevelCacheStore;
 pub use mmap::MmapStore;
 pub use vec::VecStore;
 
-
 #[derive(Debug)]
-pub struct MixReader{
+pub struct MixReader {
     file: Option<std::fs::File>,
     qiniu: Option<RangeReader>,
 }
 
 #[allow(unsafe_code)]
 impl MixReader {
-    fn read_internal(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<usize>{
+    fn read_internal(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<usize> {
         // debug!("range read_internal dummy");
         self.file.as_ref().unwrap().read_at(pos, buf)
     }
@@ -62,8 +61,7 @@ impl Read for MixReader {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         // debug!("range reader read dummy");
         if self.file.is_none() {
-            let e2 = std::io::Error::new(std::io::ErrorKind::InvalidData,
-                                         "invalid flow read");
+            let e2 = std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid flow read");
             return Err(e2);
         }
         return self.file.as_ref().unwrap().read(buf);
@@ -75,9 +73,8 @@ impl ReadAt for MixReader {
     fn read_at(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<usize> {
         // debug!("range reader read at dummy");
         if self.file.is_none() {
-            let e2 = std::io::Error::new(std::io::ErrorKind::InvalidData,
-                                         "invalid flow read_at");
-           return Err(e2);
+            let e2 = std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid flow read_at");
+            return Err(e2);
         }
         return self.file.as_ref().unwrap().read_at(pos, buf);
     }
@@ -100,13 +97,13 @@ impl<R: Read + Send + Sync> ExternalReader<R> {
 #[allow(unsafe_code)]
 impl ExternalReader<MixReader> {
     pub fn new_from_mix_config(replica_config: &ReplicaConfig, index: usize) -> Result<Self> {
-        let mut f :Option<std::fs::File> = None;
+        let mut f: Option<std::fs::File> = None;
         if replica_config.path.exists() {
             let file = OpenOptions::new().read(true).open(&replica_config.path);
             f = Some(file.unwrap());
         }
 
-        let reader = MixReader{
+        let reader = MixReader {
             file: f,
             qiniu: None,
         };
@@ -114,7 +111,7 @@ impl ExternalReader<MixReader> {
         Ok(ExternalReader {
             offset: replica_config.offsets[index],
             source: reader,
-            path:(replica_config.path).to_str().unwrap().to_string(),
+            path: (replica_config.path).to_str().unwrap().to_string(),
             read_fn: |start, end, buf: &mut [u8], reader: &MixReader| {
                 reader.read_internal(start as u64, &mut buf[0..end - start])?;
                 Ok(end - start)
@@ -275,8 +272,12 @@ impl StoreConfig {
 
 /// Backing store of the merkle tree.
 pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
-    fn new_with_config_v2(size: usize, branches: usize, config: StoreConfig, post: bool)
-        -> Result<Self> {
+    fn new_with_config_v2(
+        size: usize,
+        branches: usize,
+        config: StoreConfig,
+        post: bool,
+    ) -> Result<Self> {
         unimplemented!("Only use in qiniu level cache");
     }
     /// Creates a new store which can store up to `size` elements.
@@ -292,7 +293,12 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
 
     fn new_from_slice(size: usize, data: &[u8]) -> Result<Self>;
 
-    fn new_from_disk_v2(size: usize, branches: usize, config: &StoreConfig, _post: bool) -> Result<Self>{
+    fn new_from_disk_v2(
+        size: usize,
+        branches: usize,
+        config: &StoreConfig,
+        _post: bool,
+    ) -> Result<Self> {
         unimplemented!("Only use in qiniu level cache");
     }
     fn new_from_disk(size: usize, branches: usize, config: &StoreConfig) -> Result<Self>;
@@ -324,12 +330,21 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
         None
     }
     fn read_at(&self, index: usize) -> Result<E>;
-    fn read_at_v2(&self, index: usize, replica_buf:&[u8], replica_pos:&Vec<(u64, u64)>,
-                  lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>) -> Result<E> {
+    fn read_at_v2(
+        &self,
+        index: usize,
+        replica_buf: &[u8],
+        replica_pos: &Vec<(u64, u64)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+    ) -> Result<E> {
         self.read_at(index)
     }
-    fn read_at_v2_range(&self, _index: usize, replica_pos: &mut (u64,u64),
-                        lstree: &mut HashMap<String, Vec<(u64, u64)>>) -> Result<()> {
+    fn read_at_v2_range(
+        &self,
+        _index: usize,
+        replica_pos: &mut (u64, u64),
+        lstree: &mut HashMap<String, Vec<(u64, u64)>>,
+    ) -> Result<()> {
         Ok(())
     }
 
@@ -337,13 +352,24 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
     fn read_into(&self, pos: usize, buf: &mut [u8]) -> Result<()>;
 
     fn read_range_into(&self, start: usize, end: usize, buf: &mut [u8]) -> Result<()>;
-    fn read_range_into_v2(&self, start: usize, end: usize, buf: &mut [u8],
-                          replica_data:&[u8], replica_pos:&Vec<(u64, u64)>,
-                          lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>) -> Result<()>{
+    fn read_range_into_v2(
+        &self,
+        start: usize,
+        end: usize,
+        buf: &mut [u8],
+        replica_data: &[u8],
+        replica_pos: &Vec<(u64, u64)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+    ) -> Result<()> {
         self.read_range_into(start, end, buf)
     }
-    fn read_range_into_v2_range(&self, _start: usize, _end: usize, replica_pos:&mut (u64, u64),
-                                lstree: &mut HashMap<String, Vec<(u64, u64)>>) -> Result<()> {
+    fn read_range_into_v2_range(
+        &self,
+        _start: usize,
+        _end: usize,
+        replica_pos: &mut (u64, u64),
+        lstree: &mut HashMap<String, Vec<(u64, u64)>>,
+    ) -> Result<()> {
         Ok(())
     }
 
