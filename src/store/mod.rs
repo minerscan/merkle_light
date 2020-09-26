@@ -19,6 +19,8 @@ use crate::merkle::{get_merkle_tree_row_count, log2_pow2, next_pow2, Element};
 
 use qiniu::service::storage::download::RangeReader;
 
+use std::collections::HashMap;
+
 /// Tree size (number of nodes) used as threshold to decide which build algorithm
 /// to use. Small trees (below this value) use the old build algorithm, optimized
 /// for speed rather than memory, allocating as much as needed to allow multiple
@@ -273,6 +275,10 @@ impl StoreConfig {
 
 /// Backing store of the merkle tree.
 pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
+    fn new_with_config_v2(size: usize, branches: usize, config: StoreConfig, post: bool)
+        -> Result<Self> {
+        unimplemented!("Only use in qiniu level cache");
+    }
     /// Creates a new store which can store up to `size` elements.
     fn new_with_config(size: usize, branches: usize, config: StoreConfig) -> Result<Self>;
     fn new(size: usize) -> Result<Self>;
@@ -286,6 +292,9 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
 
     fn new_from_slice(size: usize, data: &[u8]) -> Result<Self>;
 
+    fn new_from_disk_v2(size: usize, branches: usize, config: &StoreConfig, _post: bool) -> Result<Self>{
+        unimplemented!("Only use in qiniu level cache");
+    }
     fn new_from_disk(size: usize, branches: usize, config: &StoreConfig) -> Result<Self>;
 
     fn write_at(&mut self, el: E, index: usize) -> Result<()>;
@@ -315,10 +324,12 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
         None
     }
     fn read_at(&self, index: usize) -> Result<E>;
-    fn read_at_v2(&self, index: usize, _buf:&[u8], _pos:&Vec<(u64, u64)>) -> Result<E> {
+    fn read_at_v2(&self, index: usize, replica_buf:&[u8], replica_pos:&Vec<(u64, u64)>,
+                  lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>) -> Result<E> {
         self.read_at(index)
     }
-    fn read_at_v2_range(&self, _index: usize, _pos: &mut (u64,u64)) -> Result<()> {
+    fn read_at_v2_range(&self, _index: usize, replica_pos: &mut (u64,u64),
+                        lstree: &mut HashMap<String, Vec<(u64, u64)>>) -> Result<()> {
         Ok(())
     }
 
@@ -327,11 +338,12 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
 
     fn read_range_into(&self, start: usize, end: usize, buf: &mut [u8]) -> Result<()>;
     fn read_range_into_v2(&self, start: usize, end: usize, buf: &mut [u8],
-                          _data:&[u8], _pos:&Vec<(u64, u64)>) -> Result<()>{
+                          replica_data:&[u8], replica_pos:&Vec<(u64, u64)>,
+                          lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>) -> Result<()>{
         self.read_range_into(start, end, buf)
     }
-    fn read_range_into_v2_range(&self, _start: usize, _end: usize,
-                                _pos:&mut (u64, u64)) -> Result<()> {
+    fn read_range_into_v2_range(&self, _start: usize, _end: usize, replica_pos:&mut (u64, u64),
+                                lstree: &mut HashMap<String, Vec<(u64, u64)>>) -> Result<()> {
         Ok(())
     }
 
