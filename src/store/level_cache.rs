@@ -24,13 +24,13 @@ use crate::store::{ExternalReader, Store, StoreConfig, BUILD_CHUNK_NODES};
 
 use qiniu::service::storage::download::{qiniu_is_enable, reader_from_env};
 
-use log::{debug, info, warn};
+use log::{trace, debug, info, warn};
 
 use std::collections::HashMap;
 
 use tempfile::tempfile;
 
-use backtrace::Backtrace;
+// use backtrace::Backtrace;
 
 struct MixFile {
     file: Option<File>,
@@ -46,8 +46,8 @@ impl MixFile {
 
     fn qiniu_open(path: &str, len: usize) -> std::io::Result<MixFile> {
         let r = reader_from_env(path).unwrap().read_last_bytes(len)?;
-        println!("read qiniu open {} {}", path, len);
-        println!("qiniu data {} {}", &r.1[0], &r.1[len - 1]);
+        trace!("read qiniu open {} {}", path, len);
+        trace!("qiniu data {} {}", &r.1[0], &r.1[len - 1]);
         return Ok(MixFile {
             file: None,
             path: Some(path.to_string()),
@@ -111,12 +111,9 @@ impl MixFile {
     }
 
     fn read_exact_at(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<()> {
-        let bt = Backtrace::new();
-
-        // do_some_work();
-
-        println!("read exact at {:?}", bt);
-        println!(
+        // let bt = Backtrace::new();
+        // debug!("read exact at {:?}", bt);
+        trace!(
             "read path {:?} at {} size {} f len {:?} {} ",
             self.path,
             pos,
@@ -134,8 +131,8 @@ impl MixFile {
             let data = self.last_bytes.as_ref().unwrap();
             let start = pos as i64 - (l - data.len() as i64);
             let end = start as usize + buf.len();
-            println!("start is {} end {}", start, end);
-            println!("data size {} {}", buf.len(), data.len());
+            trace!("start is {} end {}", start, end);
+            trace!("data size {} {}", buf.len(), data.len());
             if start >= 0 {
                 buf.copy_from_slice(&data[(start as usize)..end]);
                 return Ok(());
