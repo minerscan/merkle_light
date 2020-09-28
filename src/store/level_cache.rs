@@ -111,8 +111,6 @@ impl MixFile {
     }
 
     fn read_exact_at(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<()> {
-        // let bt = Backtrace::new();
-        // debug!("read exact at {:?}", bt);
         trace!(
             "read path {:?} at {} size {} f len {:?} {} ",
             self.path,
@@ -836,6 +834,74 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
     }
 }
 
+fn replica_range(start: usize, offset: usize, read_len: usize, pos: &mut (u64, u64)) -> Result<()> {
+    let st_r = start + offset;
+    pos.0 = st_r as u64;
+    pos.1 = read_len as u64;
+    return Ok(());
+}
+
+fn last_tree_range(adjusted_start: usize, read_len: usize,
+                   s: &Option<String>, lstree: &mut HashMap<String, Vec<(u64, u64)>>) -> Result<()> {
+    if s.is_none() {
+        return Ok(());
+    }
+    let s1 = s.as_ref().unwrap();
+    let last_ranges = lstree
+        .entry(s1.to_string())
+        .or_insert(Vec::with_capacity(10));
+    last_ranges.push((adjusted_start as u64, read_len as u64));
+    debug!(
+        "last_tree_range {} {}",
+        adjusted_start, read_len
+    );
+    return Ok(());
+}
+
+fn last_tree_copy(adjusted_start: usize, read_len: usize, buf: &mut [u8],
+                  s: &Option<String>, lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>) -> bool {
+    let s1 = s.as_ref().unwrap();
+    let t = lstree.get(s1);
+    if t.is_none() {
+        warn!("not found {}", s1);
+        return false;
+    }
+    debug!("last_tree_copy {}, {}", adjusted_start, read_len);
+    let temp = t.unwrap();
+    let pos = &temp.1;
+    let data = &temp.0;
+    let r = copy_data(adjusted_start, read_len, buf, data, pos);
+    if !r {
+        warn!("last_tree_copy found no data");
+    }
+    return false;
+}
+
+fn copy_data(start: usize, read_len: usize, buf: &mut [u8], data: &[u8], pos: &Vec<(u64, u64)>) -> bool {
+    for (i, j) in pos {
+        if (*i >> 24) as usize == start && (*i & 0xFFFFFF) as usize == read_len {
+            debug!(
+                "copy_data i-off is {} i-len is {}, j {}",
+                *i >> 24,
+                *i & 0xFFFFFF,
+                j
+            );
+            let a = *j as usize;
+            let b = *j as usize + read_len;
+            buf.copy_from_slice(&data[a..b]);
+            debug!(
+                "copy_data data {} {} {} {}",
+                buf[0],
+                buf[1],
+                buf[read_len - 1],
+                buf[read_len - 2]
+            );
+            return true;
+        }
+    }
+    return false;
+}
+
 impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
     pub fn set_len(&mut self, len: usize) {
         self.len = len;
@@ -867,7 +933,6 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         );
 
         self.file.set_len(written)?;
-
         Ok(())
     }
 
@@ -962,11 +1027,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
 
         // If an external reader was specified for the base layer, use it.
         if start < self.data_width * self.elem_len && self.reader.is_some() {
-            let offset = self.reader.as_ref().unwrap().offset;
-            let st_r = start + offset;
-            pos.0 = st_r as u64;
-            pos.1 = read_len as u64;
-            return Ok(());
+            return replica_range(start, self.reader.as_ref().unwrap().offset, read_len, pos);
         }
 
         // Adjust read index if in the cached ranged to be shifted
@@ -979,20 +1040,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                 start - self.cache_index_start
             };
         }
-
-        if s.is_none() {
-            return Ok(());
-        }
-        let s1 = s.as_ref().unwrap();
-        let last_ranges = lstree
-            .entry(s1.to_string())
-            .or_insert(Vec::with_capacity(10));
-        last_ranges.push((adjusted_start as u64, read_len as u64));
-        debug!(
-            "store_read_range_v2_range last {} {}",
-            adjusted_start, read_len
-        );
-        return Ok(());
+        last_tree_range(adjusted_start, read_len, s, lstree)
     }
 
     pub fn store_read_range_v2(
@@ -1024,28 +1072,11 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                     read_len,
                     pos.len()
                 );
-                for (i, j) in pos {
-                    if (*i >> 24) as usize == st_r && (*i & 0xFFFFFF) as usize == read_len {
-                        debug!(
-                            "store_read_range_v2 i-off is {} i-len is {}, j {}",
-                            *i >> 24,
-                            *i & 0xFFFFFF,
-                            j
-                        );
-                        let a = *j as usize;
-                        let b = *j as usize + read_len;
-                        read_data.copy_from_slice(&buf[a..b]);
-                        debug!(
-                            "store_read_range_v2 data {} {} {} {}",
-                            read_data[0],
-                            read_data[1],
-                            read_data[read_len - 1],
-                            read_data[read_len - 2]
-                        );
-                        return Ok(read_data);
-                    }
+                let r = copy_data(st_r, read_len, &mut *read_data, buf, pos);
+                if r {
+                    warn!("store_read_range_v2 found no data");
                 }
-                warn!("store_read_range_v2 found no data");
+                return Ok(read_data);
             } else {
                 self.reader
                     .as_ref()
@@ -1058,7 +1089,6 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                             start
                         )
                     })?;
-
                 return Ok(read_data);
             }
         }
@@ -1075,38 +1105,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         }
 
         if s.is_some() {
-            let s1 = s.as_ref().unwrap();
-            let t = lstree.get(s1);
-            if t.is_none() {
-                warn!("not found {}", s1);
-                return Ok(read_data);
-            }
-            debug!("store_read_range_v2 ltree {}, {}", adjusted_start, read_len);
-            let temp = t.unwrap();
-            let pos = &temp.1;
-            let buf = &temp.0;
-            for (i, j) in pos {
-                if (*i >> 24) as usize == adjusted_start && (*i & 0xFFFFFF) as usize == read_len {
-                    debug!(
-                        "store_read_range_v2 ltree i-off is {} i-len is {}, j {}",
-                        *i >> 24,
-                        *i & 0xFFFFFF,
-                        j
-                    );
-                    let a = *j as usize;
-                    let b = *j as usize + read_len;
-                    read_data.copy_from_slice(&buf[a..b]);
-                    debug!(
-                        "store_read_range_v2 ltree data {} {} {} {}",
-                        read_data[0],
-                        read_data[1],
-                        read_data[read_len - 1],
-                        read_data[read_len - 2]
-                    );
-                    return Ok(read_data);
-                }
-            }
-            warn!("store_read_range_v2 ltree found no data");
+            last_tree_copy(adjusted_start, read_len, &mut read_data, s, lstree);
             return Ok(read_data);
         } else {
             self.file
@@ -1180,7 +1179,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             start <= self.data_width * self.elem_len || start >= self.cache_index_start,
             "out of bounds"
         );
-        info!("----------------store_read_range_internal build process---------------");
+
         self.file
             .read_exact_at(start as u64, &mut read_data)
             .with_context(|| {
@@ -1205,7 +1204,6 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             "out of bounds"
         );
 
-        debug!("----------------read_range_internal---------------");
         Ok(self
             .store_read_range_internal(start, end)?
             .chunks(self.elem_len)
@@ -1224,8 +1222,6 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             start <= self.data_width * self.elem_len || start >= self.cache_index_start,
             "out of bounds"
         );
-
-        debug!("----------------read_at_internal---------------");
 
         Ok(E::from_slice(&self.store_read_range_internal(start, end)?))
     }
@@ -1258,28 +1254,11 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                     read_len,
                     pos.len()
                 );
-                for (i, j) in pos {
-                    if (*i >> 24) as usize == st_r && (*i & 0xFFFFFF) as usize == read_len {
-                        debug!(
-                            "store_read_into_v2 i-off is {}, i-len is {}, j {}",
-                            *i >> 24,
-                            *i & 0xFFFFFF,
-                            j
-                        );
-                        let a = *j as usize;
-                        let b = *j as usize + read_len;
-                        buf.copy_from_slice(&data[a..b]);
-                        debug!(
-                            "store_read_into_v2 data {} {} {} {}",
-                            buf[0],
-                            buf[1],
-                            buf[read_len - 1],
-                            buf[read_len - 2]
-                        );
-                        return Ok(());
-                    }
+                let r = copy_data(st_r, read_len, buf, data, pos);
+                if !r {
+                    warn!("store_read_into_v2 not found data");
                 }
-                warn!("store_read_into_v2 not found data");
+                return Ok(());
             } else {
                 self.reader
                     .as_ref()
@@ -1308,39 +1287,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             };
 
             if s.is_some() {
-                let s1 = s.as_ref().unwrap();
-                let t = lstree.get(s1);
-                if t.is_none() {
-                    warn!("not found {}", s1);
-                    return Ok(());
-                }
-                debug!("store_read_into_v2 ltree {}, {}", adjusted_start, read_len);
-                let temp = t.unwrap();
-                let pos = &temp.1;
-                let data = &temp.0;
-                for (i, j) in pos {
-                    if (*i >> 24) as usize == adjusted_start && (*i & 0xFFFFFF) as usize == read_len
-                    {
-                        debug!(
-                            "store_read_into_v2 ltree i-off is {} i-len is {}, j {}",
-                            *i >> 24,
-                            *i & 0xFFFFFF,
-                            j
-                        );
-                        let a = *j as usize;
-                        let b = *j as usize + read_len;
-                        buf.copy_from_slice(&data[a..b]);
-                        debug!(
-                            "store_read_into_v2 ltree data {} {} {} {}",
-                            buf[0],
-                            buf[1],
-                            buf[read_len - 1],
-                            buf[read_len - 2]
-                        );
-                        return Ok(());
-                    }
-                }
-                warn!("store_read_into_v2 ltree not found data");
+                last_tree_copy(adjusted_start, read_len, buf, s, lstree);
                 return Ok(());
             }
             self.file
@@ -1373,11 +1320,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         debug!("store_read_into_v2_range {} {}", start, end);
         // If an external reader was specified for the base layer, use it.
         if start < self.data_width * self.elem_len && self.reader.is_some() {
-            let offset = self.reader.as_ref().unwrap().offset;
-            let st_r = start + offset;
-            pos.0 = st_r as u64;
-            pos.1 = read_len as u64;
-            return Ok(());
+            return replica_range(start, self.reader.as_ref().unwrap().offset, read_len, pos);
         }
         // Adjust read index if in the cached ranged to be shifted
         // over since the data stored is compacted.
@@ -1391,20 +1334,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         } else {
             start
         };
-
-        if s.is_none() {
-            return Ok(());
-        }
-        let s1 = s.as_ref().unwrap();
-        let last_ranges = lstree
-            .entry(s1.to_string())
-            .or_insert(Vec::with_capacity(10));
-        last_ranges.push((adjusted_start as u64, read_len as u64));
-        debug!(
-            "store_read_into_v2_range ltree {} {}",
-            adjusted_start, read_len
-        );
-        Ok(())
+        last_tree_range(adjusted_start, read_len, s, lstree)
     }
 
     pub fn store_read_into(&self, start: usize, end: usize, buf: &mut [u8]) -> Result<()> {
