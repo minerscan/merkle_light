@@ -1073,7 +1073,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                     pos.len()
                 );
                 let r = copy_data(st_r, read_len, &mut *read_data, buf, pos);
-                if r {
+                if !r {
                     warn!("store_read_range_v2 found no data");
                 }
                 return Ok(read_data);
