@@ -111,6 +111,10 @@ impl MixFile {
     }
 
     fn read_exact_at(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<()> {
+        if self.file.is_some() {
+            return self.file.as_ref().unwrap().read_exact_at(pos, buf);
+        }
+
         trace!(
             "read path {:?} at {} size {} f len {:?} {} ",
             self.path,
@@ -119,10 +123,6 @@ impl MixFile {
             self.length,
             self.last_bytes.is_some()
         );
-
-        if self.file.is_some() {
-            return self.file.as_ref().unwrap().read_exact_at(pos, buf);
-        }
 
         if self.length.is_some() && self.last_bytes.is_some() {
             let l = self.length.unwrap() as i64;
