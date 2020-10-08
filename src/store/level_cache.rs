@@ -29,6 +29,7 @@ use log::{trace, debug, info, warn};
 use std::collections::HashMap;
 
 use tempfile::tempfile;
+use std::ops::Deref;
 
 // use backtrace::Backtrace;
 
@@ -516,7 +517,7 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         index: usize,
         buf: &[u8],
         pos: &Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>,
     ) -> Result<E> {
         let start = index * self.elem_len;
         let end = start + self.elem_len;
@@ -586,7 +587,7 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         buf: &mut [u8],
         data: &[u8],
         pos: &Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>,
     ) -> Result<()> {
         let start = start * self.elem_len;
         let end = end * self.elem_len;
@@ -859,22 +860,32 @@ fn last_tree_range(adjusted_start: usize, read_len: usize,
 }
 
 fn last_tree_copy(adjusted_start: usize, read_len: usize, buf: &mut [u8],
-                  s: &Option<String>, lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>) -> bool {
+                  s: &Option<String>, lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>) -> Result<()> {
     let s1 = s.as_ref().unwrap();
     let t = lstree.get(s1);
     if t.is_none() {
-        warn!("not found {}", s1);
-        return false;
+        warn!("last tree not found {}", s1);
+        let e2 = std::io::Error::new(std::io::ErrorKind::Interrupted, "no last tree file");
+        return Err(e2.into());
     }
+
     debug!("last_tree_copy {}, {}", adjusted_start, read_len);
     let temp = t.unwrap();
     let pos = &temp.1;
     let data = &temp.0;
+    let err = &temp.2;
+    if err.is_some() {
+        let ex = err.as_ref().unwrap();
+        let e2 = std::io::Error::new(std::io::ErrorKind::Interrupted, ex.to_string());
+        return Err(e2.into());
+    }
     let r = copy_data(adjusted_start, read_len, buf, data, pos);
     if !r {
         warn!("last_tree_copy found no data");
+        let e2 = std::io::Error::new(std::io::ErrorKind::Interrupted, "last_tree_copy found no data");
+        return Err(e2.into());
     }
-    return false;
+    return Ok(());
 }
 
 fn copy_data(start: usize, read_len: usize, buf: &mut [u8], data: &[u8], pos: &Vec<(u64, u64)>) -> bool {
@@ -1049,7 +1060,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         end: usize,
         buf: &[u8],
         pos: &Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>,
     ) -> Result<Vec<u8>> {
         let read_len = end - start;
         let mut read_data = vec![0; read_len];
@@ -1105,8 +1116,13 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         }
 
         if s.is_some() {
-            last_tree_copy(adjusted_start, read_len, &mut read_data, s, lstree);
-            return Ok(read_data);
+            let rx = last_tree_copy(adjusted_start, read_len, &mut read_data, s, lstree);
+            if rx.is_ok() {
+                return Ok(read_data);
+            } else {
+                return Err(rx.err().unwrap());
+            }
+
         } else {
             self.file
                 .read_exact_at(adjusted_start as u64, &mut read_data)
@@ -1233,7 +1249,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         buf: &mut [u8],
         data: &[u8],
         pos: &Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>,
     ) -> Result<()> {
         ensure!(
             start <= self.data_width * self.elem_len || start >= self.cache_index_start,
@@ -1287,8 +1303,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             };
 
             if s.is_some() {
-                last_tree_copy(adjusted_start, read_len, buf, s, lstree);
-                return Ok(());
+                return last_tree_copy(adjusted_start, read_len, buf, s, lstree);
             }
             self.file
                 .read_exact_at(adjusted_start as u64, buf)

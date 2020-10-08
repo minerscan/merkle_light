@@ -21,6 +21,8 @@ use qiniu::service::storage::download::RangeReader;
 
 use std::collections::HashMap;
 
+use log::warn;
+
 /// Tree size (number of nodes) used as threshold to decide which build algorithm
 /// to use. Small trees (below this value) use the old build algorithm, optimized
 /// for speed rather than memory, allocating as much as needed to allow multiple
@@ -52,6 +54,11 @@ pub struct MixReader {
 impl MixReader {
     fn read_internal(&self, pos: u64, buf: &mut [u8]) -> std::io::Result<usize> {
         // debug!("range read_internal dummy");
+        if self.file.is_none() {
+            let e2 = std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid flow read_internal");
+            warn!("dummy read internal, invalid flow");
+            return Err(e2);
+        }
         self.file.as_ref().unwrap().read_at(pos, buf)
     }
 }
@@ -62,6 +69,7 @@ impl Read for MixReader {
         // debug!("range reader read dummy");
         if self.file.is_none() {
             let e2 = std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid flow read");
+            warn!("dummy read, invalid flow");
             return Err(e2);
         }
         return self.file.as_ref().unwrap().read(buf);
@@ -97,11 +105,12 @@ impl<R: Read + Send + Sync> ExternalReader<R> {
 #[allow(unsafe_code)]
 impl ExternalReader<MixReader> {
     pub fn new_from_mix_config(replica_config: &ReplicaConfig, index: usize) -> Result<Self> {
-        let mut f: Option<std::fs::File> = None;
-        if replica_config.path.exists() {
-            let file = OpenOptions::new().read(true).open(&replica_config.path);
-            f = Some(file.unwrap());
-        }
+        let mut f: Option<std::fs::File> = if replica_config.path.exists() {
+            let file = OpenOptions::new().read(true).open(&replica_config.path)?;
+            Some(file)
+        } else {
+            None
+        };
 
         let reader = MixReader {
             file: f,
@@ -335,7 +344,7 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
         index: usize,
         replica_buf: &[u8],
         replica_pos: &Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>,
     ) -> Result<E> {
         self.read_at(index)
     }
@@ -359,7 +368,7 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
         buf: &mut [u8],
         replica_data: &[u8],
         replica_pos: &Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>,
     ) -> Result<()> {
         self.read_range_into(start, end, buf)
     }

@@ -1028,7 +1028,7 @@ impl<
         rows_to_discard: Option<usize>,
         buf: &[u8],
         pos: &Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>,
     ) -> Result<Proof<E, BaseTreeArity>> {
         ensure!(Arity::to_usize() != 0, "Invalid top-tree arity");
         ensure!(
@@ -1156,7 +1156,7 @@ impl<
         rows_to_discard: Option<usize>,
         buf: &[u8],
         pos: &Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>,
     ) -> Result<Proof<E, BaseTreeArity>> {
         ensure!(Arity::to_usize() != 0, "Invalid sub-tree arity");
         ensure!(
@@ -1356,7 +1356,7 @@ impl<
         rows_to_discard: Option<usize>,
         buf: &[u8],
         pos: &Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>,
     ) -> Result<Proof<E, BaseTreeArity>> {
         match &self.data {
             Data::TopTree(_) => self.gen_cached_top_tree_proof_v2::<TopTreeArity>(
@@ -1726,7 +1726,7 @@ impl<
         partial_tree: &MerkleTree<E, A, VecStore<E>, BaseTreeArity>,
         data: &[u8],
         pos: &Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>,
     ) -> Result<Proof<E, BaseTreeArity>> {
         ensure!(
             i < self.leafs,
@@ -2099,7 +2099,7 @@ impl<
         i: usize,
         buf: &[u8],
         pos: &Vec<(u64, u64)>,
-        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>)>,
+        lstree: &HashMap<&String, (Vec<u8>, Vec<(u64, u64)>, Option<std::io::Error>)>,
     ) -> Result<E> {
         match &self.data {
             Data::TopTree(sub_trees) => {
