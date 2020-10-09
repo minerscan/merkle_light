@@ -881,7 +881,7 @@ fn last_tree_copy(adjusted_start: usize, read_len: usize, buf: &mut [u8],
     }
     let r = copy_data(adjusted_start, read_len, buf, data, pos);
     if !r {
-        warn!("last_tree_copy found no data");
+        warn!("last_tree_copy found no data {} {} {}", s1, adjusted_start, read_len);
         let e2 = std::io::Error::new(std::io::ErrorKind::Interrupted, "last_tree_copy found no data");
         return Err(e2.into());
     }
@@ -1085,7 +1085,9 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                 );
                 let r = copy_data(st_r, read_len, &mut *read_data, buf, pos);
                 if !r {
-                    warn!("store_read_range_v2 found no data");
+                    warn!("store_read_range_v2 found no data {:?} {} {}", self.get_path_v2(), st_r, read_len);
+                    let e2 = std::io::Error::new(std::io::ErrorKind::NotFound, "store_read_range_v2 no data");
+                    return Err(e2.into());
                 }
                 return Ok(read_data);
             } else {
@@ -1272,7 +1274,9 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                 );
                 let r = copy_data(st_r, read_len, buf, data, pos);
                 if !r {
-                    warn!("store_read_into_v2 not found data");
+                    warn!("store_read_into_v2 not found data {:?} {} {}", self.get_path_v2(), start, read_len);
+                    let e2 = std::io::Error::new(std::io::ErrorKind::NotFound, "store_read_into_v2 no data");
+                    return Err(e2.into());
                 }
                 return Ok(());
             } else {
