@@ -1,4 +1,3 @@
-use std::env;
 use std::fmt;
 use std::fs::{remove_file, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom};
@@ -10,7 +9,7 @@ use std::sync::{Arc, RwLock};
 
 use anyhow::{Context, Result};
 use memmap::MmapOptions;
-use positioned_io::{ReadAt, Size, WriteAt};
+use positioned_io::{ReadAt, WriteAt};
 use rayon::iter::*;
 use rayon::prelude::*;
 use typenum::marker_traits::Unsigned;
@@ -24,12 +23,11 @@ use crate::store::{ExternalReader, Store, StoreConfig, BUILD_CHUNK_NODES};
 
 use qiniu::service::storage::download::{qiniu_is_enable, reader_from_env};
 
-use log::{trace, debug, info, warn};
+use log::{trace, debug, warn};
 
 use std::collections::HashMap;
 
 use tempfile::tempfile;
-use std::ops::Deref;
 
 // use backtrace::Backtrace;
 

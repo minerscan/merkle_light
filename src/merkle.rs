@@ -1661,7 +1661,7 @@ impl<
         // segment_shift is conceptually (segment_start >>
         // (current_row_count * shift)), which tracks an offset in the
         // main merkle tree that we apply to the partial tree.
-        let mut segment_shift = segment_start;
+        let mut _segment_shift = segment_start;
 
         // 'j' is used to track the challenged nodes required for the
         // proof up the tree.
@@ -1674,7 +1674,7 @@ impl<
 
         // 'partial_base' is used to track the data index of the layer
         // that we're currently processing in the partial tree.
-        let mut partial_base = 0;
+        let mut _partial_base = 0;
 
         ensure!(
             SubTreeArity::to_usize() == 0,
@@ -1708,10 +1708,10 @@ impl<
             base += width;
             width >>= shift; // width /= branches
 
-            partial_base += segment_width;
+            _partial_base += segment_width;
             segment_width >>= shift; // segment_width /= branches
 
-            segment_shift >>= shift; // segment_shift /= branches
+            _segment_shift >>= shift; // segment_shift /= branches
 
             j >>= shift; // j /= branches;
         }
