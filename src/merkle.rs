@@ -395,7 +395,7 @@ impl<
         );
 
         let row_count = get_merkle_tree_row_count(leafs, branches);
-        debug!("data len {}", data.len());
+        //debug!("data len {}", data.len());
         let root = data.read_at(data.len() - 1)?;
 
         Ok(MerkleTree {

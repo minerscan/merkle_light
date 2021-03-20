@@ -21,8 +21,6 @@ use crate::merkle::{
 };
 use crate::store::{ExternalReader, Store, StoreConfig, BUILD_CHUNK_NODES};
 
-use qiniu::service::storage::download::{qiniu_is_enable, reader_from_env};
-
 use log::{trace, debug, warn};
 
 use std::collections::HashMap;
@@ -43,15 +41,16 @@ impl MixFile {
         Path::new(&path).exists()
     }
 
-    fn qiniu_open(path: &str, len: usize) -> std::io::Result<MixFile> {
-        let r = reader_from_env(path).unwrap().read_last_bytes(len)?;
-        trace!("read qiniu open {} {}", path, len);
-        trace!("qiniu data {} {}", &r.1[0], &r.1[len - 1]);
+    fn ms_open(path: &str) -> std::io::Result<MixFile> {
+        let path1 = Path::new(path);
+        let path2 = path1.clone();
+        let f = File::open(path2)?;
+        //debug!("read open {} {}", path1.display().to_string(), f.metadata().unwrap().len());
         return Ok(MixFile {
-            file: None,
-            path: Some(path.to_string()),
-            length: Some(r.0),
-            last_bytes: Some(r.1),
+            length: Some(f.metadata().unwrap().len()),
+            file: Some(f),
+            path: Some(path1.display().to_string()),
+            last_bytes: None,
         });
     }
 
@@ -303,7 +302,7 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
             return Self::new_from_disk(size, branches, &config);
         }
 
-        if qiniu_is_enable() && post {
+        if post {
             return Self::new_from_disk_v2(size, branches, &config, post);
         }
 
@@ -410,12 +409,11 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         post: bool,
     ) -> Result<Self> {
         let data_path = StoreConfig::data_path(&config.path, &config.id);
-        let file = if post && qiniu_is_enable() {
-            MixFile::qiniu_open(data_path.to_str().unwrap(), E::byte_len())?
+        let file = if post {
+            MixFile::ms_open(data_path.to_str().unwrap())?
         } else {
             MixFile::open(data_path)?
         };
-
         let store_size = file.len();
 
         // The LevelCacheStore base data layer must already be a
@@ -642,7 +640,7 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
     }
 
     fn len(&self) -> usize {
-        debug!("level cache len {}", self.len);
+        //debug!("level cache len {}", self.len);
         self.len
     }
 
@@ -850,10 +848,7 @@ fn last_tree_range(adjusted_start: usize, read_len: usize,
         .entry(s1.to_string())
         .or_insert(Vec::with_capacity(10));
     last_ranges.push((adjusted_start as u64, read_len as u64));
-    debug!(
-        "last_tree_range {} {}",
-        adjusted_start, read_len
-    );
+    //debug!("last_tree_range {} {}", adjusted_start, read_len);
     return Ok(());
 }
 
@@ -867,7 +862,7 @@ fn last_tree_copy(adjusted_start: usize, read_len: usize, buf: &mut [u8],
         return Err(e2.into());
     }
 
-    debug!("last_tree_copy {}, {}", adjusted_start, read_len);
+    //debug!("last_tree_copy {}, {}", adjusted_start, read_len);
     let temp = t.unwrap();
     let pos = &temp.1;
     let data = &temp.0;
@@ -889,22 +884,22 @@ fn last_tree_copy(adjusted_start: usize, read_len: usize, buf: &mut [u8],
 fn copy_data(start: usize, read_len: usize, buf: &mut [u8], data: &[u8], pos: &Vec<(u64, u64)>) -> bool {
     for (i, j) in pos {
         if (*i >> 24) as usize == start && (*i & 0xFFFFFF) as usize == read_len {
-            debug!(
-                "copy_data i-off is {} i-len is {}, j {}",
-                *i >> 24,
-                *i & 0xFFFFFF,
-                j
-            );
+            // debug!(
+            //     "copy_data i-off is {} i-len is {}, j {}",
+            //     *i >> 24,
+            //     *i & 0xFFFFFF,
+            //     j
+            // );
             let a = *j as usize;
             let b = *j as usize + read_len;
             buf.copy_from_slice(&data[a..b]);
-            debug!(
-                "copy_data data {} {} {} {}",
-                buf[0],
-                buf[1],
-                buf[read_len - 1],
-                buf[read_len - 2]
-            );
+            // debug!(
+            //     "copy_data data {} {} {} {}",
+            //     buf[0],
+            //     buf[1],
+            //     buf[read_len - 1],
+            //     buf[read_len - 2]
+            // );
             return true;
         }
     }
@@ -1032,7 +1027,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         let s = &self.file.path;
         let mut adjusted_start = start;
 
-        debug!("store_read_range_v2_range {} {}", start, end);
+        //debug!("store_read_range_v2_range {} {}", start, end);
 
         // If an external reader was specified for the base layer, use it.
         if start < self.data_width * self.elem_len && self.reader.is_some() {
@@ -1074,13 +1069,13 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             if pos.len() > 0 {
                 let offset = self.reader.as_ref().unwrap().offset;
                 let st_r = start + offset;
-                debug!(
-                    "store_read_range_v2 {}, {}, {}, {}",
-                    offset,
-                    st_r,
-                    read_len,
-                    pos.len()
-                );
+                // debug!(
+                //     "store_read_range_v2 {}, {}, {}, {}",
+                //     offset,
+                //     st_r,
+                //     read_len,
+                //     pos.len()
+                // );
                 let r = copy_data(st_r, read_len, &mut *read_data, buf, pos);
                 if !r {
                     warn!("store_read_range_v2 found no data {:?} {} {}", self.get_path_v2(), st_r, read_len);
@@ -1263,13 +1258,13 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                 let offset = self.reader.as_ref().unwrap().offset;
                 let st_r = start + offset;
 
-                debug!(
-                    "store_read_into_v2 {}, {}, {}, {}",
-                    offset,
-                    st_r,
-                    read_len,
-                    pos.len()
-                );
+                // debug!(
+                //     "store_read_into_v2 {}, {}, {}, {}",
+                //     offset,
+                //     st_r,
+                //     read_len,
+                //     pos.len()
+                // );
                 let r = copy_data(st_r, read_len, buf, data, pos);
                 if !r {
                     warn!("store_read_into_v2 not found data {:?} {} {}", self.get_path_v2(), start, read_len);
@@ -1334,7 +1329,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         );
         let s = &self.file.path;
         let read_len = end - start;
-        debug!("store_read_into_v2_range {} {}", start, end);
+        //debug!("store_read_into_v2_range {} {}", start, end);
         // If an external reader was specified for the base layer, use it.
         if start < self.data_width * self.elem_len && self.reader.is_some() {
             return replica_range(start, self.reader.as_ref().unwrap().offset, read_len, pos);

@@ -17,8 +17,6 @@ use typenum::marker_traits::Unsigned;
 use crate::hash::Algorithm;
 use crate::merkle::{get_merkle_tree_row_count, log2_pow2, next_pow2, Element};
 
-use qiniu::service::storage::download::RangeReader;
-
 use std::collections::HashMap;
 
 use log::warn;
@@ -47,7 +45,6 @@ pub use vec::VecStore;
 #[derive(Debug)]
 pub struct MixReader {
     file: Option<std::fs::File>,
-    qiniu: Option<RangeReader>,
 }
 
 #[allow(unsafe_code)]
@@ -114,7 +111,6 @@ impl ExternalReader<MixReader> {
 
         let reader = MixReader {
             file: _f,
-            qiniu: None,
         };
 
         Ok(ExternalReader {
