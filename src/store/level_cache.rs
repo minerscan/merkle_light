@@ -295,15 +295,14 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
     ) -> Result<Self> {
         let data_path = StoreConfig::data_path(&config.path, &config.id);
 
+        if post {
+            return Self::new_from_disk_v2(size, branches, &config, post);
+        }
         // If the specified file exists, load it from disk.  This is
         // the only supported usage of this call for this type of
         // Store.
         if MixFile::native_exists(&data_path) {
             return Self::new_from_disk(size, branches, &config);
-        }
-
-        if post {
-            return Self::new_from_disk_v2(size, branches, &config, post);
         }
 
         // Otherwise, create the file and allow it to be the on-disk store.
