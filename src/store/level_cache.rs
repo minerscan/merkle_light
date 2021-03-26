@@ -1406,22 +1406,3 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         Ok(())
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use std::{boxed::Box, error::Error, result::Result};
-//     use std::env;
-//
-//
-//     #[test]
-//     fn test_last_read(){
-//         env::set_var("QINIU", "/Users/long/projects/filecoin/goupload/sim.toml");
-//         let p = "/Users/long/projects/filecoin/lotus/stdir/bench890193298/cache/s-t01000-1/sc-02-data-tree-r-last.dat";
-//         let f = MixFile::qiniu_open(p, 64).unwrap();
-//         let mut bytes = vec![0; 64];
-//
-//         let ret = f.read_exact_at(f.len() as u64 -64, &mut bytes);
-//         assert!(ret.is_ok())
-//     }
-// }

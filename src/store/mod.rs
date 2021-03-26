@@ -283,7 +283,7 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
         _config: StoreConfig,
         _post: bool,
     ) -> Result<Self> {
-        unimplemented!("Only use in qiniu level cache");
+        unimplemented!("Only use in level cache");
     }
     /// Creates a new store which can store up to `size` elements.
     fn new_with_config(size: usize, branches: usize, config: StoreConfig) -> Result<Self>;
@@ -304,7 +304,7 @@ pub trait Store<E: Element>: std::fmt::Debug + Send + Sync + Sized {
         _config: &StoreConfig,
         _post: bool,
     ) -> Result<Self> {
-        unimplemented!("Only use in qiniu level cache");
+        unimplemented!("Only use in level cache");
     }
     fn new_from_disk(size: usize, branches: usize, config: &StoreConfig) -> Result<Self>;
 
