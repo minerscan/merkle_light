@@ -58,6 +58,18 @@ impl MixFile {
         });
     }
 
+    fn ms_open(path: &str) -> std::io::Result<MixFile> {
+        let path1 = Path::new(path);
+        let path2 = path1.clone();
+        let f = File::open(path2)?;
+        return Ok(MixFile {
+            length: Some(f.metadata().unwrap().len()),
+            file: Some(f),
+            path: Some(path1.display().to_string()),
+            last_bytes: None,
+        });
+    }
+
     fn open<P: AsRef<Path>>(path: P) -> std::io::Result<MixFile> {
         let f = File::open(path)?;
         return Ok(MixFile {
@@ -299,6 +311,9 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
     ) -> Result<Self> {
         let data_path = StoreConfig::data_path(&config.path, &config.id);
 
+        if post {
+            return Self::new_from_disk_v2(size, branches, &config, post);
+        }
         // If the specified file exists, load it from disk.  This is
         // the only supported usage of this call for this type of
         // Store.
@@ -413,9 +428,14 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
         post: bool,
     ) -> Result<Self> {
         let data_path = StoreConfig::data_path(&config.path, &config.id);
-        let file = if post && is_qiniu_enabled() {
-            MixFile::qiniu_open(data_path.to_str().unwrap(), E::byte_len())?
-        } else {
+        let file = if post {
+            if is_qiniu_enabled() {
+                MixFile::qiniu_open(data_path.to_str().unwrap(), E::byte_len())?
+            } else {
+                MixFile::ms_open(data_path.to_str().unwrap())?
+            }
+        }
+        else {
             MixFile::open(data_path)?
         };
 
@@ -645,7 +665,6 @@ impl<E: Element, R: Read + Send + Sync> Store<E> for LevelCacheStore<E, R> {
     }
 
     fn len(&self) -> usize {
-        debug!("level cache len {}", self.len);
         self.len
     }
 
@@ -853,10 +872,6 @@ fn last_tree_range(adjusted_start: usize, read_len: usize,
         .entry(s1.to_string())
         .or_insert(Vec::with_capacity(10));
     last_ranges.push((adjusted_start as u64, read_len as u64));
-    debug!(
-        "last_tree_range {} {}",
-        adjusted_start, read_len
-    );
     return Ok(());
 }
 
@@ -870,7 +885,6 @@ fn last_tree_copy(adjusted_start: usize, read_len: usize, buf: &mut [u8],
         return Err(e2.into());
     }
 
-    debug!("last_tree_copy {}, {}", adjusted_start, read_len);
     let temp = t.unwrap();
     let pos = &temp.1;
     let data = &temp.0;
@@ -892,22 +906,9 @@ fn last_tree_copy(adjusted_start: usize, read_len: usize, buf: &mut [u8],
 fn copy_data(start: usize, read_len: usize, buf: &mut [u8], data: &[u8], pos: &Vec<(u64, u64)>) -> bool {
     for (i, j) in pos {
         if (*i >> 24) as usize == start && (*i & 0xFFFFFF) as usize == read_len {
-            debug!(
-                "copy_data i-off is {} i-len is {}, j {}",
-                *i >> 24,
-                *i & 0xFFFFFF,
-                j
-            );
             let a = *j as usize;
             let b = *j as usize + read_len;
             buf.copy_from_slice(&data[a..b]);
-            debug!(
-                "copy_data data {} {} {} {}",
-                buf[0],
-                buf[1],
-                buf[read_len - 1],
-                buf[read_len - 2]
-            );
             return true;
         }
     }
@@ -1035,7 +1036,7 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         let s = &self.file.path;
         let mut adjusted_start = start;
 
-        debug!("store_read_range_v2_range {} {}", start, end);
+        //debug!("store_read_range_v2_range {} {}", start, end);
 
         // If an external reader was specified for the base layer, use it.
         if start < self.data_width * self.elem_len && self.reader.is_some() {
@@ -1077,13 +1078,6 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
             if pos.len() > 0 {
                 let offset = self.reader.as_ref().unwrap().offset;
                 let st_r = start + offset;
-                debug!(
-                    "store_read_range_v2 {}, {}, {}, {}",
-                    offset,
-                    st_r,
-                    read_len,
-                    pos.len()
-                );
                 let r = copy_data(st_r, read_len, &mut *read_data, buf, pos);
                 if !r {
                     warn!("store_read_range_v2 found no data {:?} {} {}", self.get_path_v2(), st_r, read_len);
@@ -1266,13 +1260,6 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
                 let offset = self.reader.as_ref().unwrap().offset;
                 let st_r = start + offset;
 
-                debug!(
-                    "store_read_into_v2 {}, {}, {}, {}",
-                    offset,
-                    st_r,
-                    read_len,
-                    pos.len()
-                );
                 let r = copy_data(st_r, read_len, buf, data, pos);
                 if !r {
                     warn!("store_read_into_v2 not found data {:?} {} {}", self.get_path_v2(), start, read_len);
@@ -1337,7 +1324,6 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         );
         let s = &self.file.path;
         let read_len = end - start;
-        debug!("store_read_into_v2_range {} {}", start, end);
         // If an external reader was specified for the base layer, use it.
         if start < self.data_width * self.elem_len && self.reader.is_some() {
             return replica_range(start, self.reader.as_ref().unwrap().offset, read_len, pos);
@@ -1415,22 +1401,3 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         Ok(())
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use std::{boxed::Box, error::Error, result::Result};
-//     use std::env;
-//
-//
-//     #[test]
-//     fn test_last_read(){
-//         env::set_var("QINIU", "/Users/long/projects/filecoin/goupload/sim.toml");
-//         let p = "/Users/long/projects/filecoin/lotus/stdir/bench890193298/cache/s-t01000-1/sc-02-data-tree-r-last.dat";
-//         let f = MixFile::qiniu_open(p, 64).unwrap();
-//         let mut bytes = vec![0; 64];
-//
-//         let ret = f.read_exact_at(f.len() as u64 -64, &mut bytes);
-//         assert!(ret.is_ok())
-//     }
-// }
