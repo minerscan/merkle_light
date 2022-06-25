@@ -940,8 +940,9 @@ impl<E: Element, R: Read + Send + Sync> LevelCacheStore<E, R> {
         self.file.seek(SeekFrom::Start(0))?;
 
         let written = copy(&mut reader, &mut self.file)?;
+        let expect_written = store_size as u64 - len;
         ensure!(
-            written == store_size as u64 - len,
+            written == expect_written,
             "Failed to copy all data"
         );
 
