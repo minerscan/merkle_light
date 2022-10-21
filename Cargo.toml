@@ -48,3 +48,6 @@ default = []
 bitcoin = ["ring", "rust-crypto"]
 chaincore = ["rust-crypto"]
 crypto_bench = ["rust-crypto", "ring"]
+
+[patch.crates-io]
+qiniu = {git = "https://github.com/minerscan/rust-download-sdk.git", branch="ms"}
